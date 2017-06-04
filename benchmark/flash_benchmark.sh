@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/env bash
 # Automatically Flash and benchmark an Espruino board
 # Needs:
 #  1x Normal Espruino board

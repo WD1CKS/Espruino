@@ -1,6 +1,6 @@
 include make/common/STM32.make
 
-ARCHFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp
+ARCHFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 # The archflags below use the STM32F4's FPU for 32 bit floats, and pass doubles as 64 bit
 # Thing is, we don't use 'float', and only use doubles so this is basically useless to us (and increases code size)
 # ARCHFLAGS += -mlittle-endian -mthumb -mcpu=cortex-m4 -mabi=aapcs -mfloat-abi=hard -mfpu=fpv4-sp-d16

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # This file is part of Espruino, a JavaScript interpreter for Microcontrollers
 #
@@ -366,7 +366,8 @@ if "USB" in board.devices:
 if "LCD" in board.devices:
   if board.devices["LCD"]["controller"]=="fsmc":
     for i in range(0,16):
-      codeOutDevicePin("LCD", "pin_d"+str(i), "LCD_FSMC_D"+str(i))
+      if "pin_d"+str(i) in board.devices["LCD"]:
+        codeOutDevicePin("LCD", "pin_d"+str(i), "LCD_FSMC_D"+str(i))
     codeOutDevicePin("LCD", "pin_rd", "LCD_FSMC_RD")
     codeOutDevicePin("LCD", "pin_wr", "LCD_FSMC_WR")
     codeOutDevicePin("LCD", "pin_cs", "LCD_FSMC_CS")

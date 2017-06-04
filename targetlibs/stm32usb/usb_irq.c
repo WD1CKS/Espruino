@@ -59,6 +59,7 @@ void OTG_FS_WKUP_IRQHandler(void)
 * @brief This function handles USB On The Go FS global interrupt.
 */
 void OTG_FS_IRQHandler(void) {
+GPIO_WriteBit(GPIOE, GPIO_Pin_0, 1);
   HAL_PCD_IRQHandler(&hpcd_USB_OTG_FS);
 }
 

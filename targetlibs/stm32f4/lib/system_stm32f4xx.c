@@ -255,7 +255,7 @@
 // USB OTG FS, SDIO and RNG Clock =  PLL_VCO / PLLQ   <-- should be 48Mhz
 // SYSCLK = PLL_VCO / PLL_P
 
-#define PLL_M      8
+#define PLL_M      ((HSE_VALUE) / 1000000UL)
 #define PLL_Q      7
 
 #if defined (STM32F40_41xxx)

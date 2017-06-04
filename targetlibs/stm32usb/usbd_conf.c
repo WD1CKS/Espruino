@@ -89,6 +89,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* hpcd)
     GPIO_PinAFConfig(GPIOA,GPIO_PinSource11,GPIO_AF_OTG1_FS) ;
     GPIO_PinAFConfig(GPIOA,GPIO_PinSource12,GPIO_AF_OTG1_FS) ;
 
+#ifndef USB_NO_VBUS_SENSE
     /* Configure  VBUS Pin */
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
@@ -96,11 +97,12 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* hpcd)
     GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
     GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL ;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
+#endif
 
 
     NVIC_InitTypeDef NVIC_InitStructure;
     NVIC_InitStructure.NVIC_IRQChannel = OTG_FS_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 12; // set this quite low. it can take a while to fill RX/TX buffers and don't let it break other stuff
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; // set this quite low. it can take a while to fill RX/TX buffers and don't let it break other stuff
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
