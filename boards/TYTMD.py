@@ -27,7 +27,6 @@ info = {
    'libraries' : [
      'LCD_FSMC',
      'GRAPHICS',
-     'NEOPIXEL'
    ],
    'makefile' : [
      'DEFINES+=-DUSE_USB_OTG_FS=1 -DSTM32F40_41xxx -DUSB_NO_VBUS_SENSE',
@@ -69,6 +68,7 @@ devices = {
   'LED1' : { 'pin' : 'E0' },
   'LED2' : { 'pin' : 'E1' },
   'BTN1' : { 'pin' : 'E11', 'inverted' : True, 'pinstate' : 'IN' },
+  'BTN2' : { 'pin' : 'E12', 'inverted' : True, 'pinstate' : 'IN' },
   'USB' : { 'pin_dm' : 'A11',
             'pin_dp' : 'A12', },
   'LCD' : {
