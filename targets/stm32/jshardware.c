@@ -1018,6 +1018,7 @@ bool jshPinGetValue(Pin pin) {
 static void jshResetPeripherals() {
   // Set pin state to analog input - saves some power
   Pin i;
+#ifndef TYTMD
   for (i=0;i<JSH_PIN_COUNT;i++) {
 #ifdef DEFAULT_CONSOLE_TX_PIN
     if (i==DEFAULT_CONSOLE_TX_PIN) continue;
@@ -1029,6 +1030,7 @@ static void jshResetPeripherals() {
       jshPinSetState(i, JSHPINSTATE_ADC_IN);
     }
   }
+#endif
   // Initialise UART if we have a default console device on it
   if (DEFAULT_CONSOLE_DEVICE != EV_USBSERIAL) {
     JshUSARTInfo inf;
