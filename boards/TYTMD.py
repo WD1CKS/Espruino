@@ -39,7 +39,7 @@ chip = {
   'part' : "STM32F405VGT6",
   'family' : "STM32F4",
   'package' : "LQFP100",
-  'ram' : 127, # 0x0001 8000 long, from 0x2000 0000 to 0x2001 7FFF
+  'ram' : 128, # 0x0001 8000 long, from 0x2000 0000 to 0x2001 7FFF
   'flash' : 512, # 0x0008 0000 long, from 0x0800 0000 to 0x0807 FFFF
   'speed' : 100,
   'usart' : 3,
@@ -58,6 +58,7 @@ chip = {
     'flash_available' : 512 - 48 # binary will have a hole in it, so we just want to test against full size
   },
   'place_text_section' : 0x0800c000, # note flash_available above
+  'place_estack' : 0x2001fffc
 };
 
 devices = {

@@ -96,6 +96,8 @@ elif IS_USING_BOOTLOADER:
   FLASH_SIZE -= BOOTLOADER_SIZE
 
 STACK_START = RAM_BASE + RAM_SIZE
+if "place_estack" in board.chip:
+  STACK_START = board.chip["place_estack"]
 
 codeOut("""
 /* Automatically generated linker file for """+boardname+"""
