@@ -29,9 +29,7 @@ int main(void){
   // get in quick and relocate vector table!
   SCB->VTOR = 0x08005000;
 #else // quickly set up the vector table...
-  #ifndef TYTMD
-    SCB->VTOR = (unsigned int)&_VECTOR_TABLE;
-  #endif
+  SCB->VTOR = (unsigned int)&_VECTOR_TABLE;
 #endif
 
   jshInit();
