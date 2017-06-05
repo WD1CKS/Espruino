@@ -39,23 +39,24 @@ chip = {
   'part' : "STM32F405VGT6",
   'family' : "STM32F4",
   'package' : "LQFP100",
-  'ram' : 128, # 0x0001 8000 long, from 0x2000 0000 to 0x2001 7FFF
-  'flash' : 512, # 0x0008 0000 long, from 0x0800 0000 to 0x0807 FFFF
+  'ram' : 192, # 0x0002 0000 long, from 0x2000 0000 to 0x2001 7FFF
+               # 0x0001 0000 long, from 0x1000 0000 to 0x1000 FFFF
+  'flash' : 1024, # 0x0008 0000 long, from 0x0800 0000 to 0x080f FFFF
   'speed' : 168,
-  'usart' : 3,
+  'usart' : 6,
   'spi' : 3,
   'i2c' : 3,
   'adc' : 3,
   'dac' : 2,
   'saved_code' : {
-    # code size 225248 = 0x36FE0 starts at 0x0800 c000 ends at 0x0804 3FE0
+    # code size 225248 = 0x36FE0 starts at 0x0800 c000 ends at 0x0804 2FE0
     # so we have some left room for Espruino firmware and no risk to clear it while saving
-    'address' : 0x08060000, # flash_saved_code_start 0x0806 0000 to 0x807 5000
+    'address' : 0x080e0000, # flash_saved_code_start 0x080e 0000 to 0x80e 5000
     # we have enough flash space in this single flash page to save all of the ram
-    'page_size' :  131072, # size of pages : on STM32F411, last 2 pages are 128 Kbytes
+    'page_size' :  131072, # size of pages : on STM32F405, last 7 pages are 128 Kbytes
     # we use the last flash page only, furthermore it persists after a firmware flash of the board
     'pages' : 1, # count of pages we're using to save RAM to Flash,
-    'flash_available' : 512 - 48 # binary will have a hole in it, so we just want to test against full size
+    'flash_available' : 1024 - 48 # binary will have a hole in it, so we just want to test against full size
   },
   'place_text_section' : 0x0800c000, # note flash_available above
   'place_estack' : 0x2001fffc
