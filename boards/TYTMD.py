@@ -41,7 +41,7 @@ chip = {
   'package' : "LQFP100",
   'ram' : 128, # 0x0001 8000 long, from 0x2000 0000 to 0x2001 7FFF
   'flash' : 512, # 0x0008 0000 long, from 0x0800 0000 to 0x0807 FFFF
-  'speed' : 100,
+  'speed' : 168,
   'usart' : 3,
   'spi' : 3,
   'i2c' : 3,
