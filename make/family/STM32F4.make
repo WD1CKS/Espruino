@@ -56,7 +56,10 @@ targetlibs/stm32f4/lib/system_stm32f4xx.c
 #targetlibs/stm32f4/lib/stm32f4xx_ltdc.c
 #targetlibs/stm32f4/lib/stm32f4xx_rng.c
 #targetlibs/stm32f4/lib/stm32f4xx_sai.c
-#targetlibs/stm32f4/lib/stm324xx_fsmc.c
+
+ifdef USE_LCD_FSMC
+TARGETSOURCES += ./targetlibs/stm32f4/lib/stm32f4xx_fsmc.c
+endif
 
 ifdef USB
 include make/common/STM32_USB.make

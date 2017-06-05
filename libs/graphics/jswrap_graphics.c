@@ -60,8 +60,13 @@ void jswrap_graphics_init() {
     graphicsStructInit(&gfx);
     gfx.data.type = JSGRAPHICSTYPE_FSMC;
     gfx.graphicsVar = parentObj;
+#ifdef TYTMD
+    gfx.data.width = 160;
+    gfx.data.height = 128;
+#else
     gfx.data.width = 320;
     gfx.data.height = 240;
+#endif
     gfx.data.bpp = 16;
     lcdInit_FSMC(&gfx);
     lcdSetCallbacks_FSMC(&gfx);

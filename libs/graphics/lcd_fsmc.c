@@ -47,6 +47,7 @@ static uint8_t LCD_Code;
 #define  HX8347A    12 /* 0x0047 */	
 #define  LGDP4535   13 /* 0x4535 */  
 #define  SSD2119    14 /* 3.5 LCD 0x9919 */
+#define  LCD_TYTMD  15 /* 160x128 LCD on Tytera Radios */
 
 
 static inline void LCD_WR_CMD(unsigned int index,unsigned int val);
@@ -297,16 +298,26 @@ void LCD_init_hardware() {
 #if defined(HYSTM32_24)
   #define LCD_RESET (Pin)(JSH_PORTE_OFFSET + 1)
 #elif defined(HYSTM32_32)
+#elif defined(TYTMD)
 #else
   #error Unsupported board for ILI9325 LCD 
 #endif
 
+#ifdef LCD_FSMC_D8
 #define LCD_REG              (*((volatile unsigned short *) 0x60000000)) /* RS = 0 */
 #define LCD_RAM              (*((volatile unsigned short *) 0x60020000)) /* RS = 1 */
+#else
+#define LCD_REG              (*((volatile uint8_t *) 0x60000000)) /* RS = 0 */
+#define LCD_RAM              (*((volatile uint8_t *) 0x60040000)) /* RS = 1 */
+#endif
 
 
 static inline void LCD_WR_REG(unsigned int index) {
+#ifdef LCD_FSMC_D8
   LCD_REG = (uint16_t)index;
+#else
+  LCD_REG = (uint8_t)index;
+#endif
 }
 
 static inline unsigned int LCD_RD_Data(void) {
@@ -314,15 +325,76 @@ static inline unsigned int LCD_RD_Data(void) {
 }
 
 static inline void LCD_WR_Data(unsigned int val) {
+#ifdef LCD_FSMC_D8
   LCD_RAM = (uint16_t)val;
+#else
+  LCD_RAM = (uint8_t)val;
+#endif
 }
 
 static inline void LCD_WR_Data_multi(unsigned int val, unsigned int count) {
   int i;
   for (i=0;i<count;i++)
+#ifdef LCD_FSMC_D8
     LCD_RAM = (uint16_t)val;
+#else
+  {
+      LCD_WR_Data((val>>8)&0xff);
+      LCD_WR_Data(val&0xff);
+  }
+#endif
 }
 
+#ifdef TYTMD
+void LCD_init_pins(void)
+{
+  GPIO_InitTypeDef GPIO_InitStructure;
+
+  jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(LCD_FSMC_CS, 0);
+
+  /* Enable the FSMC pins for LCD control */
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
+                          GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_12/*RS*/;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource0, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource1, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource4, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource5, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource14, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource15, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource12, GPIO_AF_FSMC);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+  GPIO_Init(GPIOE, &GPIO_InitStructure);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource7, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource8, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource9, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource10, GPIO_AF_FSMC);
+
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_13;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOA, GPIO_Pin_6);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
+}
+
+void LCD_clear_pins(void)
+{
+  jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(LCD_FSMC_CS, 1);
+}
+#endif
 
 void LCD_init_hardware() {
   delay_ms(100);
@@ -331,14 +403,27 @@ void LCD_init_hardware() {
 
   GPIO_InitTypeDef GPIO_InitStructure;
 
+#ifdef STM32F4
+  RCC_AHB3PeriphClockCmd(RCC_AHB3Periph_FSMC, ENABLE); /* Enable the FSMC Clock */
+  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC |
+                   RCC_AHB1Periph_GPIOD | RCC_AHB1Periph_GPIOE , ENABLE);
+#else
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_FSMC, ENABLE); /* Enable the FSMC Clock */
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC |
                    RCC_APB2Periph_GPIOD | RCC_APB2Periph_GPIOE , ENABLE);
+#endif
 
   /* Enable the FSMC pins for LCD control */
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+#ifdef STM32F4
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+#else
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 | 
+#endif
+  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+#ifdef LCD_FSMC_D8
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
                           GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_14 |
                           GPIO_Pin_15 | GPIO_Pin_7 /*NE1*/ |  GPIO_Pin_11/*RS*/;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
@@ -346,21 +431,62 @@ void LCD_init_hardware() {
                           GPIO_Pin_11 | GPIO_Pin_12 | GPIO_Pin_13 | GPIO_Pin_14 |
                           GPIO_Pin_15;
   GPIO_Init(GPIOE, &GPIO_InitStructure);
+#else
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
+                          GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_12/*RS*/;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource0, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource1, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource4, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource5, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource14, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource15, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOD, GPIO_PinSource12, GPIO_AF_FSMC);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+  GPIO_Init(GPIOE, &GPIO_InitStructure);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource7, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource8, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource9, GPIO_AF_FSMC);
+  GPIO_PinAFConfig(GPIOE, GPIO_PinSource10, GPIO_AF_FSMC);
+
+  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_13;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOA, GPIO_Pin_6);
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+  GPIO_Init(GPIOD, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
+
+  jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(LCD_FSMC_CS, 0);
+#endif
 
   FSMC_NORSRAMInitTypeDef  FSMC_NORSRAMInitStructure;
   FSMC_NORSRAMStructInit(&FSMC_NORSRAMInitStructure);
   FSMC_NORSRAMTimingInitTypeDef  p;
-  p.FSMC_AddressSetupTime = 0x02;
-  p.FSMC_AddressHoldTime = 0x00;
-  p.FSMC_DataSetupTime = 0x05;
-  p.FSMC_BusTurnAroundDuration = 0x00;
-  p.FSMC_CLKDivision = 0x00;
-  p.FSMC_DataLatency = 0x00;
+  p.FSMC_AddressSetupTime = 3;
+  p.FSMC_AddressHoldTime = 3;
+  p.FSMC_DataSetupTime = 4;
+  p.FSMC_BusTurnAroundDuration = 0;
+  p.FSMC_CLKDivision = 1;
+  p.FSMC_DataLatency = 0;
   p.FSMC_AccessMode = FSMC_AccessMode_B;
 
   FSMC_NORSRAMInitStructure.FSMC_MemoryType = FSMC_MemoryType_NOR;
   FSMC_NORSRAMInitStructure.FSMC_Bank = FSMC_Bank1_NORSRAM1;
+#ifdef TYTMD
+  FSMC_NORSRAMInitStructure.FSMC_DataAddressMux = FSMC_DataAddressMux_Enable;
+#else
   FSMC_NORSRAMInitStructure.FSMC_DataAddressMux = FSMC_DataAddressMux_Disable;
+#endif
   FSMC_NORSRAMInitStructure.FSMC_MemoryDataWidth = FSMC_MemoryDataWidth_16b;
   FSMC_NORSRAMInitStructure.FSMC_BurstAccessMode = FSMC_BurstAccessMode_Disable;
   FSMC_NORSRAMInitStructure.FSMC_WaitSignalPolarity = FSMC_WaitSignalPolarity_Low;
@@ -372,6 +498,7 @@ void LCD_init_hardware() {
   FSMC_NORSRAMInitStructure.FSMC_WriteBurst = FSMC_WriteBurst_Disable;
   FSMC_NORSRAMInitStructure.FSMC_ReadWriteTimingStruct = &p;
   FSMC_NORSRAMInitStructure.FSMC_WriteTimingStruct = &p;
+  FSMC_NORSRAMInitStructure.FSMC_AsynchronousWait= FSMC_AsynchronousWait_Disable;
   FSMC_NORSRAMInit(&FSMC_NORSRAMInitStructure);
 
   /* Enable FSMC Bank1_SRAM Bank */
@@ -401,8 +528,8 @@ static inline unsigned int LCD_RD_CMD(unsigned int index) {
 }
 
 void LCD_init_panel() {
-  uint16_t DeviceCode;
-  delay_ms(100);
+  uint16_t DeviceCode=0;
+  delay_ms(120);
   DeviceCode = LCD_RD_CMD(0x0000);
 
   if (DeviceCode == 0x4532) { // For the 2.4" LCD boards
@@ -1096,6 +1223,22 @@ void LCD_init_panel() {
     LCD_WR_CMD(0x002B,0x000B);
     LCD_WR_CMD(0x0007,0x0133);
   }
+#ifdef TYTMD
+  else if( DeviceCode == 0 )
+  {
+    LCD_Code = LCD_TYTMD;
+    LCD_WR_CMD(0x3a, 0x05);
+    LCD_WR_CMD(0x36, 0x60);
+    LCD_WR_CMD(0xb4, 0x00);
+    LCD_WR_REG(0x11);
+    delay_ms(120);
+    LCD_WR_REG(0x29);
+#ifdef LCD_BL
+    jshPinSetState(LCD_BL, JSHPINSTATE_GPIO_OUT);
+    jshPinSetValue(LCD_BL, 1); // BACKLIGHT=1
+#endif
+  }
+#endif
   else	/* special ID */
   {
     uint16_t DeviceCode2 = LCD_RD_CMD(0x67);
@@ -1273,6 +1416,9 @@ void LCD_init_panel() {
 #endif				
   delay_ms(50);   /* delay 50 ms */
 
+#ifndef LCD_FSMC_D8
+  jshPinSetValue(LCD_FSMC_CS, 1);
+#endif
 }
 
 
@@ -1304,16 +1450,18 @@ static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned shor
 	      break;     
      case SSD2119:	 /* 3.5 LCD 0x9919 */
 	      break; 
+     case LCD_TYTMD:	/* No hardware cursor */
+	      break;
 #endif
   }
 }
 
 static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2) {
-  // x1>=x2  and y1>=y2
-  x2 = (gfx->data.width-1)-x2;
-  x1 = (gfx->data.width-1)-x1;
   switch (LCD_Code) {
      default:
+        // x1>=x2  and y1>=y2
+        x2 = (gfx->data.width-1)-x2;
+        x1 = (gfx->data.width-1)-x1;
         LCD_WR_CMD(0x50, y1);
         LCD_WR_CMD(0x51, y2);
         LCD_WR_CMD(0x52, x2);
@@ -1321,6 +1469,9 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
         break;
 #ifndef SAVE_ON_FLASH
      case SSD1289:   /* 0x8989 */
+        // x1>=x2  and y1>=y2
+        x2 = (gfx->data.width-1)-x2;
+        x1 = (gfx->data.width-1)-x1;
         LCD_WR_CMD(0x44, y1 | (y2<<8));
         LCD_WR_CMD(0x45, x2);
         LCD_WR_CMD(0x46, x1);
@@ -1328,6 +1479,9 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
      case HX8346A: 
      case HX8347A: 
      case HX8347D: 
+        // x1>=x2  and y1>=y2
+        x2 = (gfx->data.width-1)-x2;
+        x1 = (gfx->data.width-1)-x1;
         LCD_WR_CMD(0x02,y1>>8);
         LCD_WR_CMD(0x03,y1);
         LCD_WR_CMD(0x04,y2>>8);
@@ -1336,6 +1490,16 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
         LCD_WR_CMD(0x07,x2);
         LCD_WR_CMD(0x08,x1>>8); 
         LCD_WR_CMD(0x09,x1); 
+        break;
+     case LCD_TYTMD:
+        LCD_WR_CMD(0x2a, x1);
+        LCD_WR_Data(x1);
+        LCD_WR_Data(x2);
+        LCD_WR_Data(x2);
+        LCD_WR_CMD(0x2b, y1);
+        LCD_WR_Data(y1);
+        LCD_WR_Data(y2);
+        LCD_WR_Data(y2);
         break;
 #endif
   }
@@ -1349,32 +1513,69 @@ static inline void lcdSetFullWindow(JsGraphics *gfx) {
 
 void lcdFillRect_FSMC(JsGraphics *gfx, short x1, short y1, short x2, short y2) {
   // finally!
-  if (x1==x2) { // special case for single vertical line - no window needed
-    lcdSetCursor(gfx,x2,y1);
-    LCD_WR_REG(0x22); // start data tx
-    unsigned int i=0, l=(1+y2-y1);
-    LCD_WR_Data_multi(gfx->data.fgColor, l);
-  } else {
+  if (LCD_Code == LCD_TYTMD) {
+    LCD_init_pins();
     lcdSetWindow(gfx,x1,y1,x2,y2);
-    lcdSetCursor(gfx,x2,y1);
-    LCD_WR_REG(0x22); // start data tx
-    unsigned int i=0, l=(1+x2-x1)*(1+y2-y1);
-    LCD_WR_Data_multi(gfx->data.fgColor, l);
-    lcdSetFullWindow(gfx);
+    LCD_WR_REG(0x2c);
+    LCD_WR_Data_multi(gfx->data.fgColor, (1+x2-x1)*(1+y2-y1));
+    LCD_clear_pins();
+  }
+  else {
+    if (x1==x2) { // special case for single vertical line - no window needed
+      lcdSetCursor(gfx,x2,y1);
+      LCD_WR_REG(0x22); // start data tx
+      unsigned int i=0, l=(1+y2-y1);
+      LCD_WR_Data_multi(gfx->data.fgColor, l);
+    } else {
+      lcdSetWindow(gfx,x1,y1,x2,y2);
+      lcdSetCursor(gfx,x2,y1);
+      LCD_WR_REG(0x22); // start data tx
+      unsigned int i=0, l=(1+x2-x1)*(1+y2-y1);
+      LCD_WR_Data_multi(gfx->data.fgColor, l);
+      lcdSetFullWindow(gfx);
+    }
   }
 }
 
 unsigned int lcdGetPixel_FSMC(JsGraphics *gfx, short x, short y) {
-  lcdSetCursor(gfx,x,y);
-  LCD_WR_REG(0x22); // start data tx
-  return LCD_RD_Data();
+  if (LCD_Code == LCD_TYTMD) {
+    int ret = 0;
+    /* This likely doesn't work due to timing issues... */
+    LCD_init_pins();
+    lcdSetWindow(gfx,x,y,x,y);
+    LCD_WR_REG(0x2e);
+    ret = LCD_RD_Data();
+    ret = LCD_RD_Data();
+    ret = LCD_RD_Data();
+    ret <<= 8;
+    ret |= LCD_RD_Data();
+    LCD_clear_pins();
+    return ret;
+  }
+  else {
+    lcdSetCursor(gfx,x,y);
+    LCD_WR_REG(0x22); // start data tx
+    return LCD_RD_Data();
+  }
 }
 
 
 void lcdSetPixel_FSMC(JsGraphics *gfx, short x, short y, unsigned int col) {
-  lcdSetCursor(gfx,x,y);
-  LCD_WR_REG(34);
-  LCD_WR_Data(col);
+  if (LCD_Code == LCD_TYTMD) {
+    LCD_init_pins();
+    LCD_WR_CMD(0x2a, x);
+    LCD_WR_Data(x);
+    LCD_WR_CMD(0x2b, y);
+    LCD_WR_Data(y);
+    LCD_WR_REG(0x2c);
+    LCD_WR_Data_multi(gfx->data.fgColor, 1);
+    LCD_clear_pins();
+  }
+  else {
+    lcdSetCursor(gfx,x,y);
+    LCD_WR_REG(34);
+    LCD_WR_Data(col);
+  }
 }
 
 void lcdInit_FSMC(JsGraphics *gfx) {
@@ -1382,7 +1583,9 @@ void lcdInit_FSMC(JsGraphics *gfx) {
 
   LCD_init_hardware();
   LCD_init_panel();
+#ifndef TYTMD
   lcdSetFullWindow(gfx);
+#endif
 }
 
 void lcdSetCallbacks_FSMC(JsGraphics *gfx) {

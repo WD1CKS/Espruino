@@ -25,7 +25,7 @@ info = {
  'build' : {
    'optimizeflags' : '-O3',
    'libraries' : [
-     # 'LCD_FSMC', Not yet...
+     'LCD_FSMC',
      'GRAPHICS',
      'NEOPIXEL'
    ],
@@ -84,7 +84,9 @@ devices = {
             'pin_rd' : 'D4',
             'pin_wr' : 'D5',
             'pin_cs' : 'D6',
-            'pin_rs' : 'D12'
+            'pin_rs' : 'D12',
+            'pin_bl' : 'C6',
+            'pin_reset' : 'D13'
           },
 };
 
