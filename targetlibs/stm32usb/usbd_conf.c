@@ -102,7 +102,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* hpcd)
 
     NVIC_InitTypeDef NVIC_InitStructure;
     NVIC_InitStructure.NVIC_IRQChannel = OTG_FS_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0; // set this quite low. it can take a while to fill RX/TX buffers and don't let it break other stuff
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 12; // set this quite low. it can take a while to fill RX/TX buffers and don't let it break other stuff
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
