@@ -59,7 +59,7 @@ chip = {
     'flash_available' : 1024 - 48 # binary will have a hole in it, so we just want to test against full size
   },
   'place_text_section' : 0x0800c000, # note flash_available above
-  'place_estack' : 0x2001fffc
+  'place_estack' : 0x2001fff8
 };
 
 devices = {
