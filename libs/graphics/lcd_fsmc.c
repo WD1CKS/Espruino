@@ -1229,13 +1229,13 @@ void LCD_init_panel() {
     JshSPIInfo spii;
     uint8_t lcd_type;
 
-    jshPinSetState(55, JSHPINSTATE_GPIO_OUT);	/* TODO: PD7 There *must* be macros for this! */
-    jshPinSetValue(55, 0);
+    jshPinSetState(JSH_PORTD_OFFSET + 7, JSHPINSTATE_GPIO_OUT);
+    jshPinSetValue(JSH_PORTD_OFFSET + 7, 0);
     spii.baudRate = 84000000;			/* PCLK2 (HCLK (ie: SYSCLK)/2) */
     spii.baudRateSpec = SPIB_MAXIMUM;
-    spii.pinSCK = 19;	/* TODO: PB3 There *must* be macros for this! */
-    spii.pinMISO = 20;	/* TODO: PB4 There *must* be macros for this! */
-    spii.pinMOSI = 21;	/* TODO: PB5 There *must* be macros for this! */
+    spii.pinSCK = JSH_PORTB_OFFSET + 3;
+    spii.pinMISO = JSH_PORTB_OFFSET + 4;
+    spii.pinMOSI = JSH_PORTB_OFFSET + 5;
     spii.spiMode = SPIF_CPHA | SPIF_CPOL;
     spii.spiMSB = true;
 
@@ -1252,7 +1252,7 @@ void LCD_init_panel() {
     jshSPISend(EV_SPI1, -1);	// Read.
     jshSPISend(EV_SPI1, 0xA5);  // Dummy write
     lcd_type = jshSPISend(EV_SPI1, -1);	// Read.
-    jshPinSetValue(55, 1);
+    jshPinSetValue(JSH_PORTD_OFFSET + 7, 1);
     LCD_Code = LCD_TYTMD;
     LCD_WR_CMD(0x3a, 0x05);
     LCD_WR_REG(0x36);
