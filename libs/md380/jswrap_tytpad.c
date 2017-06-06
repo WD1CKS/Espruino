@@ -17,6 +17,9 @@ keypad_read(void)
 	jshPinSetState(JSH_PORTE_OFFSET + 8, JSHPINSTATE_GPIO_IN_PULLUP);
 	jshPinSetState(JSH_PORTE_OFFSET + 9, JSHPINSTATE_GPIO_IN_PULLUP);
 	jshPinSetState(JSH_PORTE_OFFSET + 10, JSHPINSTATE_GPIO_IN_PULLUP);
+	jshPinSetState(JSH_PORTE_OFFSET + 11, JSHPINSTATE_GPIO_IN_PULLUP);
+	jshPinSetState(JSH_PORTE_OFFSET + 12, JSHPINSTATE_GPIO_IN_PULLUP);
+	jshPinSetState(JSH_PORTA_OFFSET + 1, JSHPINSTATE_GPIO_IN_PULLUP);
 
 	/* Output pins */
 	jshPinSetState(JSH_PORTA_OFFSET + 6, JSHPINSTATE_GPIO_OUT);
@@ -55,6 +58,7 @@ keypad_read(void)
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 10) ? 0 : (1<<17);	// B
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 11) ? 0 : (1<<18);	// P
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 12) ? 0 : (1<<19);	// p
+	gpios |= jshPinGetValue(JSH_PORTA_OFFSET + 1) ? 0 : (1<<19);	// X
 
 	return gpios;
 }
@@ -99,7 +103,7 @@ int32_t jswrap_tytkeypad_getraw(void)
 
 int32_t jswrap_tytkeypad_getpressed(void)
 {
-	return (int32_t)ButtonCurrent(&TYTPad_Debounce, 0x000fffff);
+	return (int32_t)ButtonCurrent(&TYTPad_Debounce, 0x001fffff);
 }
 
 /*JSON{
@@ -123,7 +127,7 @@ int32_t jswrap_tytkeypad_getpressed(void)
   "generate" : "jswrap_tytkeypad_poll"
 }*/
 
-const char *lookup="0123456789*#GDURTBPp";
+const char *lookup="0123456789*#GDURTBPpX";
 
 void jswrap_tytkeypad_poll(void)
 {
@@ -141,7 +145,7 @@ void jswrap_tytkeypad_poll(void)
 
 	keys = keypad_read();
 	ButtonProcess(&TYTPad_Debounce, keys);
-	keys = ButtonPressed(&TYTPad_Debounce, 0x000fffff);
+	keys = ButtonPressed(&TYTPad_Debounce, 0x001fffff);
 	while(keys) {
 		key = ffs((int)keys);
 		keys &= ~(1<<(key - 1));
@@ -151,7 +155,7 @@ void jswrap_tytkeypad_poll(void)
 		jsvUnLock(kv);
 	}
 
-	keys = ButtonReleased(&TYTPad_Debounce, 0x000fffff);
+	keys = ButtonReleased(&TYTPad_Debounce, 0x001fffff);
 	while(keys) {
 		key = ffs((int)keys);
 		keys &= ~(1<<(key - 1));
