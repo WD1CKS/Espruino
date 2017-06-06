@@ -147,7 +147,7 @@ void jswrap_tytkeypad_poll(void)
 		keys &= ~(1<<(key - 1));
 		str[0] = lookup[key-1];
 		kv = jsvNewFromString(str);
-		jsiExecuteObjectCallbacks(obj, JS_EVENT_PREFIX"keyPress", &kv, 1);
+		jsiQueueObjectCallbacks(obj, JS_EVENT_PREFIX"keyPress", &kv, 1);
 		jsvUnLock(kv);
 	}
 
@@ -157,7 +157,7 @@ void jswrap_tytkeypad_poll(void)
 		keys &= ~(1<<(key - 1));
 		str[0] = lookup[key-1];
 		kv = jsvNewFromString(str);
-		jsiExecuteObjectCallbacks(obj, JS_EVENT_PREFIX"keyRelease", &kv, 1);
+		jsiQueueObjectCallbacks(obj, JS_EVENT_PREFIX"keyRelease", &kv, 1);
 		jsvUnLock(kv);
 	}
 }

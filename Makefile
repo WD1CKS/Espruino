@@ -584,6 +584,13 @@ ifdef USE_NEOPIXEL
   WRAPPERSOURCES += libs/neopixel/jswrap_neopixel.c
 endif
 
+ifdef USE_TYTKEYPAD
+  DEFINES += -DUSE_TYTKEYPAD
+  INCLUDE += -I$(ROOT)/libs/md380
+  WRAPPERSOURCES += libs/md380/jswrap_tytpad.c
+  WRAPPERSOURCES += libs/md380/button_debounce.c
+endif
+
 ifdef USE_NFC
   DEFINES += -DUSE_NFC -DNFC_HAL_ENABLED=1
   INCLUDE          += -I$(NRF5X_SDK_PATH)/components/nfc/t2t_lib

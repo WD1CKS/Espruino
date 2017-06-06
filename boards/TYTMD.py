@@ -27,6 +27,7 @@ info = {
    'libraries' : [
      'LCD_FSMC',
      'GRAPHICS',
+     'TYTKEYPAD'
    ],
    'makefile' : [
      'DEFINES+=-DUSE_USB_OTG_FS=1 -DSTM32F40_41xxx -DUSB_NO_VBUS_SENSE',
