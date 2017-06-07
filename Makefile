@@ -591,6 +591,12 @@ ifdef USE_TYTKEYPAD
   WRAPPERSOURCES += libs/md380/button_debounce.c
 endif
 
+ifdef USE_TYTROTATO
+  DEFINES += -DUSE_TYTROTATO
+  INCLUDE += -I$(ROOT)/libs/md380
+  WRAPPERSOURCES += libs/md380/jswrap_tytrotato.c
+endif
+
 ifdef USE_NFC
   DEFINES += -DUSE_NFC -DNFC_HAL_ENABLED=1
   INCLUDE          += -I$(NRF5X_SDK_PATH)/components/nfc/t2t_lib

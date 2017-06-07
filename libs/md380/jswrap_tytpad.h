@@ -1,5 +1,4 @@
 #include "jsvar.h"
-#include "graphics.h"
 
 void jswrap_tytkeypad_init(void);
 int32_t jswrap_tytkeypad_getraw(void);
