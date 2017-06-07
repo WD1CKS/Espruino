@@ -126,7 +126,7 @@ int32_t jswrap_tytkeypad_getpressed(void)
   "generate" : "jswrap_tytkeypad_poll"
 }*/
 
-const char *lookup="0123456789*#GDURTBPpX";
+const char *lookup="0123456789*#GUDRTBPpX";
 
 void jswrap_tytkeypad_poll(void)
 {
