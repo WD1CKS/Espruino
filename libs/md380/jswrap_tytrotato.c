@@ -6,7 +6,9 @@
   "name" : "TYTRotato",
   "generate" : "jswrap_tytrotato",
   "return" : ["int32", "Current Rotato position" ]
-}*/
+}
+The rotato is the 16-position rotary switch on the top.  Return value is between one and sixteen inclusive.
+*/
 
 static const int8_t lookup[] = {11, 12, 10, 9, 14, 13, 15, 16, 6, 5, 7, 8, 3, 4, 2, 1};
 

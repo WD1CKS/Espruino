@@ -65,7 +65,9 @@ keypad_read(void)
 /*JSON{
   "type" : "class",
   "class" : "TYTKeyPad"
-}*/
+}
+This class implements the keypad (and side buttons) of the radio.
+*/
 
 /*JSON{
   "type" : "init",
@@ -85,7 +87,29 @@ void jswrap_tytkeypad_init(void)
   "name" : "getRaw",
   "generate" : "jswrap_tytkeypad_getraw",
   "return" : ["int32","Current raw key state"]
-}*/
+}
+<code>Bit 0:  '0'
+Bit 1:  '1'
+Bit 2:  '2'
+Bit 3:  '3'
+Bit 4:  '4'
+Bit 5:  '5'
+Bit 6:  '6'
+Bit 7:  '7'
+Bit 8:  '8'
+Bit 9:  '9'
+Bit 10: '*'
+Bit 11: '#'
+Bit 12: 'G' (Green button)
+Bit 13: 'D' (Down arrow)
+Bit 14: 'U' (Up arrow)
+Bit 15: 'R' (Red button)
+Bit 16: 'T' (Top side button)
+Bit 17: 'B' (Bottom side button)
+Bit 18: 'P' (Side PTT button)
+Bit 19: 'p' (External PTT button)
+Bit 20: 'X' (Power switch - only available when pin A7 is set)</code>
+*/
 
 int32_t jswrap_tytkeypad_getraw(void)
 {
@@ -98,7 +122,9 @@ int32_t jswrap_tytkeypad_getraw(void)
   "name" : "getPressed",
   "generate" : "jswrap_tytkeypad_getpressed",
   "return" : ["int32","Current debounced pressed keys"]
-}*/
+}
+See getRaw() for bit definitions.
+*/
 
 int32_t jswrap_tytkeypad_getpressed(void)
 {
@@ -109,14 +135,14 @@ int32_t jswrap_tytkeypad_getpressed(void)
   "type" : "event",
   "class" : "TYTKeyPad",
   "name" : "keyPress",
-  "params" : [ [ "key", "int", "The key code that was pressed"] ]
+  "params" : [ [ "key", "JsVar", "The key that was pressed as a single character string"] ]
 }*/
 
 /*JSON{
   "type" : "event",
   "class" : "TYTKeyPad",
   "name" : "keyRelease",
-  "params" : [ [ "key", "int", "The key code that was released"] ]
+  "params" : [ [ "key", "JsVar", "The key that was released as a single character string"] ]
 }*/
 
 /*JSON{
@@ -124,7 +150,9 @@ int32_t jswrap_tytkeypad_getpressed(void)
   "class" : "TYTKeyPad",
   "name" : "poll",
   "generate" : "jswrap_tytkeypad_poll"
-}*/
+}
+This function should be called periodically.  A key will be pressed once it has been poll()ed eight times.
+*/
 
 const char *lookup="0123456789*#GDURTBPpX";
 
