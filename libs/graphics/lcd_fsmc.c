@@ -42,10 +42,10 @@ static uint8_t LCD_Code;
 #define  LGDP4531   7  /* 0x4531 */
 #define  SPFD5408B  8  /* 0x5408 */
 #define  R61505U    9  /* 0x1505 0x0505 */
-#define  HX8346A    10 /* 0x0046 */  
+#define  HX8346A    10 /* 0x0046 */
 #define  HX8347D    11 /* 0x0047 */
-#define  HX8347A    12 /* 0x0047 */	
-#define  LGDP4535   13 /* 0x4535 */  
+#define  HX8347A    12 /* 0x0047 */
+#define  LGDP4535   13 /* 0x4535 */
 #define  SSD2119    14 /* 3.5 LCD 0x9919 */
 #define  LCD_TYTMD  15 /* 160x128 LCD on Tytera Radios */
 
@@ -300,7 +300,7 @@ void LCD_init_hardware() {
 #elif defined(HYSTM32_32)
 #elif defined(TYTMD)
 #else
-  #error Unsupported board for ILI9325 LCD 
+  #error Unsupported board for ILI9325 LCD
 #endif
 
 #ifdef LCD_FSMC_D8
@@ -387,7 +387,7 @@ void LCD_init_pins(bool read)
 
   if (read) {
     FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
-      (uint32_t)/* FSMC_AddressSetupTime */ 0 |
+      (uint32_t)/* FSMC_AddressSetupTime */ 3 |
       (/* FSMC_AddressHoldTime */ 75 << 4 )|
       (/* FSMC_DataSetupTime */ 100 << 8) |
       (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
@@ -406,7 +406,7 @@ void LCD_clear_pins(bool read)
 {
   if (read) {
     FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
-      (uint32_t)/* FSMC_AddressSetupTime */ 0 |
+      (uint32_t)/* FSMC_AddressSetupTime */ 3 |
       (/* FSMC_AddressHoldTime */ 3 << 4 )|
       (/* FSMC_DataSetupTime */ 4 << 8) |
       (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
@@ -496,7 +496,7 @@ void LCD_init_hardware() {
   FSMC_NORSRAMInitTypeDef  FSMC_NORSRAMInitStructure;
   FSMC_NORSRAMStructInit(&FSMC_NORSRAMInitStructure);
   FSMC_NORSRAMTimingInitTypeDef  p;
-  p.FSMC_AddressSetupTime = 0;		// Not with Synchronous
+  p.FSMC_AddressSetupTime = 3;		// Not with Synchronous
   p.FSMC_AddressHoldTime = 3;		// Not with Synchronous
   p.FSMC_DataSetupTime = 4;		// Only with async multiplexed
   p.FSMC_BusTurnAroundDuration = 0;	// Only with async multiplexed
@@ -1505,28 +1505,28 @@ static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned shor
   switch( LCD_Code )
   {
      default:		 /* 0x9320 0x9325 0x9328 0x9331 0x5408 0x1505 0x0505 0x7783 0x4531 0x4535 */
-          LCD_WR_CMD(0x0020, y );     
-          LCD_WR_CMD(0x0021, x );     
-	      break; 
+          LCD_WR_CMD(0x0020, y );
+          LCD_WR_CMD(0x0021, x );
+	      break;
 #ifndef SAVE_ON_FLASH
      case SSD1298: 	 /* 0x8999 */
      case SSD1289:   /* 0x8989 */
-	      LCD_WR_CMD(0x004e, y );      
+	      LCD_WR_CMD(0x004e, y );
           LCD_WR_CMD(0x004f, x );
-	      break;  
+	      break;
 
      case HX8346A: 	 /* 0x0046 */
      case HX8347A: 	 /* 0x0047 */
      case HX8347D: 	 /* 0x0047 */
-	      LCD_WR_CMD(0x02, y>>8 );                                                  
-	      LCD_WR_CMD(0x03, y );  
+	      LCD_WR_CMD(0x02, y>>8 );
+	      LCD_WR_CMD(0x03, y );
 
-	      LCD_WR_CMD(0x06, x>>8 );                           
-	      LCD_WR_CMD(0x07, x );    
-	
-	      break;     
+	      LCD_WR_CMD(0x06, x>>8 );
+	      LCD_WR_CMD(0x07, x );
+
+	      break;
      case SSD2119:	 /* 3.5 LCD 0x9919 */
-	      break; 
+	      break;
 #endif
   }
 }
@@ -1562,9 +1562,9 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
         LCD_WR_CMD(0x45, x2);
         LCD_WR_CMD(0x46, x1);
         break;
-     case HX8346A: 
-     case HX8347A: 
-     case HX8347D: 
+     case HX8346A:
+     case HX8347A:
+     case HX8347D:
         // x1>=x2  and y1>=y2
         x2 = (gfx->data.width-1)-x2;
         x1 = (gfx->data.width-1)-x1;
@@ -1574,8 +1574,8 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
         LCD_WR_CMD(0x05,y2);
         LCD_WR_CMD(0x06,x2>>8);
         LCD_WR_CMD(0x07,x2);
-        LCD_WR_CMD(0x08,x1>>8); 
-        LCD_WR_CMD(0x09,x1); 
+        LCD_WR_CMD(0x08,x1>>8);
+        LCD_WR_CMD(0x09,x1);
         break;
 #endif
   }
@@ -1668,4 +1668,3 @@ void lcdSetCallbacks_FSMC(JsGraphics *gfx) {
   gfx->getPixel = lcdGetPixel_FSMC;
   gfx->fillRect = lcdFillRect_FSMC;
 }
-
