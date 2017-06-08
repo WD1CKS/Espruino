@@ -304,8 +304,8 @@ void LCD_init_hardware() {
 #endif
 
 #ifdef LCD_FSMC_D8
-#define LCD_REG              (*((volatile unsigned short *) 0x60000000)) /* RS = 0 */
-#define LCD_RAM              (*((volatile unsigned short *) 0x60020000)) /* RS = 1 */
+#define LCD_REG              (*((volatile uint16_t *) 0x60000000)) /* RS = 0 */
+#define LCD_RAM              (*((volatile uint16_t *) 0x60020000)) /* RS = 1 */
 #else
 #define LCD_REG              (*((volatile uint8_t *) 0x60000000)) /* RS = 0 */
 #define LCD_RAM              (*((volatile uint8_t *) 0x60040000)) /* RS = 1 */
@@ -346,12 +346,9 @@ static inline void LCD_WR_Data_multi(unsigned int val, unsigned int count) {
 }
 
 #ifdef TYTMD
-void LCD_init_pins(void)
+void LCD_init_pins(bool read)
 {
   GPIO_InitTypeDef GPIO_InitStructure;
-
-  jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
-  jshPinSetValue(LCD_FSMC_CS, 0);
 
   /* Enable the FSMC pins for LCD control */
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -387,10 +384,37 @@ void LCD_init_pins(void)
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
   GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
+
+  if (read) {
+    FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
+      (uint32_t)/* FSMC_AddressSetupTime */ 0 |
+      (/* FSMC_AddressHoldTime */ 75 << 4 )|
+      (/* FSMC_DataSetupTime */ 100 << 8) |
+      (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
+      (/* FSMC_CLKDivision */ 0 << 20) |
+      (/* FSMC_DataLatency */ 0 << 24) |
+      FSMC_AccessMode_B;
+  }
+
+  jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(LCD_FSMC_CS, 0);
+  if (read)
+	jshDelayMicroseconds(1);
 }
 
-void LCD_clear_pins(void)
+void LCD_clear_pins(bool read)
 {
+  if (read) {
+    FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
+      (uint32_t)/* FSMC_AddressSetupTime */ 0 |
+      (/* FSMC_AddressHoldTime */ 3 << 4 )|
+      (/* FSMC_DataSetupTime */ 4 << 8) |
+      (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
+      (/* FSMC_CLKDivision */ 0 << 20) |
+      (/* FSMC_DataLatency */ 0 << 24) |
+      FSMC_AccessMode_B;
+  }
+
   jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
   jshPinSetValue(LCD_FSMC_CS, 1);
 }
@@ -472,12 +496,12 @@ void LCD_init_hardware() {
   FSMC_NORSRAMInitTypeDef  FSMC_NORSRAMInitStructure;
   FSMC_NORSRAMStructInit(&FSMC_NORSRAMInitStructure);
   FSMC_NORSRAMTimingInitTypeDef  p;
-  p.FSMC_AddressSetupTime = 3;
-  p.FSMC_AddressHoldTime = 3;
-  p.FSMC_DataSetupTime = 4;
-  p.FSMC_BusTurnAroundDuration = 0;
-  p.FSMC_CLKDivision = 1;
-  p.FSMC_DataLatency = 0;
+  p.FSMC_AddressSetupTime = 0;		// Not with Synchronous
+  p.FSMC_AddressHoldTime = 3;		// Not with Synchronous
+  p.FSMC_DataSetupTime = 4;		// Only with async multiplexed
+  p.FSMC_BusTurnAroundDuration = 0;	// Only with async multiplexed
+  p.FSMC_CLKDivision = 0;		// Not with Asynchronous
+  p.FSMC_DataLatency = 0;		// Not with Asynchronous
   p.FSMC_AccessMode = FSMC_AccessMode_B;
 
   FSMC_NORSRAMInitStructure.FSMC_MemoryType = FSMC_MemoryType_NOR;
@@ -1555,11 +1579,11 @@ static inline void lcdSetFullWindow(JsGraphics *gfx) {
 void lcdFillRect_FSMC(JsGraphics *gfx, short x1, short y1, short x2, short y2) {
   // finally!
   if (LCD_Code == LCD_TYTMD) {
-    LCD_init_pins();
+    LCD_init_pins(false);
     lcdSetWindow(gfx,x1,y1,x2,y2);
     LCD_WR_REG(0x2c);
     LCD_WR_Data_multi(gfx->data.fgColor, (1+x2-x1)*(1+y2-y1));
-    LCD_clear_pins();
+    LCD_clear_pins(false);
   }
   else {
     if (x1==x2) { // special case for single vertical line - no window needed
@@ -1581,16 +1605,17 @@ void lcdFillRect_FSMC(JsGraphics *gfx, short x1, short y1, short x2, short y2) {
 unsigned int lcdGetPixel_FSMC(JsGraphics *gfx, short x, short y) {
   if (LCD_Code == LCD_TYTMD) {
     int ret = 0;
-    /* This likely doesn't work due to timing issues... */
-    LCD_init_pins();
-    lcdSetWindow(gfx,x,y,x,y);
+    LCD_init_pins(true);
+    LCD_WR_CMD(0x2a, x);
+    LCD_WR_Data(x);
+    LCD_WR_CMD(0x2b, y);
+    LCD_WR_Data(y);
     LCD_WR_REG(0x2e);
-    ret = LCD_RD_Data();
-    ret = LCD_RD_Data();
-    ret = LCD_RD_Data();
-    ret <<= 8;
-    ret |= LCD_RD_Data();
-    LCD_clear_pins();
+    LCD_RD_Data();			// Dummy read
+    ret = (LCD_RD_Data() & 0xf8) << 8;	// Red channel
+    ret |= (LCD_RD_Data() & 0xfc) << 3;	// Green channel
+    ret |= (LCD_RD_Data() & 0xf8) >> 3;	// Blue channel
+    LCD_clear_pins(true);
     return ret;
   }
   else {
@@ -1603,14 +1628,14 @@ unsigned int lcdGetPixel_FSMC(JsGraphics *gfx, short x, short y) {
 
 void lcdSetPixel_FSMC(JsGraphics *gfx, short x, short y, unsigned int col) {
   if (LCD_Code == LCD_TYTMD) {
-    LCD_init_pins();
+    LCD_init_pins(false);
     LCD_WR_CMD(0x2a, x);
     LCD_WR_Data(x);
     LCD_WR_CMD(0x2b, y);
     LCD_WR_Data(y);
     LCD_WR_REG(0x2c);
-    LCD_WR_Data_multi(gfx->data.fgColor, 1);
-    LCD_clear_pins();
+    LCD_WR_Data_multi(col, 1);
+    LCD_clear_pins(false);
   }
   else {
     lcdSetCursor(gfx,x,y);
