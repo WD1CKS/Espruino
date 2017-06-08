@@ -552,6 +552,71 @@ static inline unsigned int LCD_RD_CMD(unsigned int index) {
 }
 
 void LCD_init_panel() {
+#ifdef TYTMD
+  JshSPIInfo spii;
+  uint8_t lcd_type;
+
+  delay_ms(70);
+  jshPinSetState(JSH_PORTD_OFFSET + 7, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(JSH_PORTD_OFFSET + 7, 0);
+  spii.baudRate = 84000000;			/* PCLK2 (HCLK (ie: SYSCLK)/2) */
+  spii.baudRateSpec = SPIB_MAXIMUM;
+  spii.pinSCK = JSH_PORTB_OFFSET + 3;
+  spii.pinMISO = JSH_PORTB_OFFSET + 4;
+  spii.pinMOSI = JSH_PORTB_OFFSET + 5;
+  spii.spiMode = SPIF_CPHA | SPIF_CPOL;
+  spii.spiMSB = true;
+
+  jshSPISetup(EV_SPI1, &spii);
+  jshSPISend(EV_SPI1, 0x48);
+  jshSPISend(EV_SPI1, -1);	// Read.
+  jshSPISend(EV_SPI1, 0);	// Address >> 16 & 0xff
+  jshSPISend(EV_SPI1, -1);	// Read.
+  jshSPISend(EV_SPI1, 0x30);	// Address >> 8  & 0xff
+  jshSPISend(EV_SPI1, -1);	// Read.
+  jshSPISend(EV_SPI1, 0x1d);	// Address       & 0xff
+  jshSPISend(EV_SPI1, -1);	// Read.
+  jshSPISend(EV_SPI1, 0xA5);  // Dummy write
+  jshSPISend(EV_SPI1, -1);	// Read.
+  jshSPISend(EV_SPI1, 0xA5);  // Dummy write
+  lcd_type = jshSPISend(EV_SPI1, -1);	// Read.
+  jshPinSetValue(JSH_PORTD_OFFSET + 7, 1);
+  LCD_Code = LCD_TYTMD;
+  LCD_WR_CMD(0x3a, 0x05);
+  LCD_WR_REG(0x36);
+  switch(lcd_type & 3) {
+  case 0x00:	/* ??? */
+    LCD_WR_Data(0xa0);
+    break;
+  case 0x01:	/* MD-390 */
+    LCD_WR_Data(0x60);
+    break;
+  case 0x02:	/* ??? */
+    LCD_WR_Data(0xa8);
+    break;
+  case 0x03:	/* MD-380 */
+    LCD_WR_Data(0xa7);
+    break;
+  }
+  LCD_WR_CMD(0xb4, 0x00);
+  LCD_WR_REG(0x11);
+  delay_ms(120);
+  LCD_WR_CMD(0x2a, 0);
+  LCD_WR_Data(0);
+  LCD_WR_Data(179);
+  LCD_WR_Data(179);
+  LCD_WR_CMD(0x2b, 0);
+  LCD_WR_Data(0);
+  LCD_WR_Data(127);
+  LCD_WR_Data(127);
+  LCD_WR_REG(0x2c);
+  LCD_WR_Data_multi(0, 23040);
+  LCD_WR_REG(0x29);
+#ifdef LCD_BL
+  jshPinSetState(LCD_BL, JSHPINSTATE_GPIO_OUT);
+  jshPinSetValue(LCD_BL, 1); // BACKLIGHT=1
+#endif
+#else
   uint16_t DeviceCode=0;
   delay_ms(120);
   DeviceCode = LCD_RD_CMD(0x0000);
@@ -1247,63 +1312,6 @@ void LCD_init_panel() {
     LCD_WR_CMD(0x002B,0x000B);
     LCD_WR_CMD(0x0007,0x0133);
   }
-#ifdef TYTMD
-  else if( DeviceCode == 0 )
-  {
-    JshSPIInfo spii;
-    uint8_t lcd_type;
-
-    jshPinSetState(JSH_PORTD_OFFSET + 7, JSHPINSTATE_GPIO_OUT);
-    jshPinSetValue(JSH_PORTD_OFFSET + 7, 0);
-    spii.baudRate = 84000000;			/* PCLK2 (HCLK (ie: SYSCLK)/2) */
-    spii.baudRateSpec = SPIB_MAXIMUM;
-    spii.pinSCK = JSH_PORTB_OFFSET + 3;
-    spii.pinMISO = JSH_PORTB_OFFSET + 4;
-    spii.pinMOSI = JSH_PORTB_OFFSET + 5;
-    spii.spiMode = SPIF_CPHA | SPIF_CPOL;
-    spii.spiMSB = true;
-
-    jshSPISetup(EV_SPI1, &spii);
-    jshSPISend(EV_SPI1, 0x48);
-    jshSPISend(EV_SPI1, -1);	// Read.
-    jshSPISend(EV_SPI1, 0);	// Address >> 16 & 0xff
-    jshSPISend(EV_SPI1, -1);	// Read.
-    jshSPISend(EV_SPI1, 0x30);	// Address >> 8  & 0xff
-    jshSPISend(EV_SPI1, -1);	// Read.
-    jshSPISend(EV_SPI1, 0x1d);	// Address       & 0xff
-    jshSPISend(EV_SPI1, -1);	// Read.
-    jshSPISend(EV_SPI1, 0xA5);  // Dummy write
-    jshSPISend(EV_SPI1, -1);	// Read.
-    jshSPISend(EV_SPI1, 0xA5);  // Dummy write
-    lcd_type = jshSPISend(EV_SPI1, -1);	// Read.
-    jshPinSetValue(JSH_PORTD_OFFSET + 7, 1);
-    LCD_Code = LCD_TYTMD;
-    LCD_WR_CMD(0x3a, 0x05);
-    LCD_WR_REG(0x36);
-    switch(lcd_type & 3) {
-    case 0x00:	/* ??? */
-      LCD_WR_Data(0xa0);
-      break;
-    case 0x01:	/* MD-390 */
-      LCD_WR_Data(0x60);
-      break;
-    case 0x02:	/* ??? */
-      LCD_WR_Data(0xa8);
-      break;
-    case 0x03:	/* MD-380 */
-      LCD_WR_Data(0xa7);
-      break;
-    }
-    LCD_WR_CMD(0xb4, 0x00);
-    LCD_WR_REG(0x11);
-    delay_ms(120);
-    LCD_WR_REG(0x29);
-#ifdef LCD_BL
-    jshPinSetState(LCD_BL, JSHPINSTATE_GPIO_OUT);
-    jshPinSetValue(LCD_BL, 1); // BACKLIGHT=1
-#endif
-  }
-#endif
   else	/* special ID */
   {
     uint16_t DeviceCode2 = LCD_RD_CMD(0x67);
@@ -1478,7 +1486,8 @@ void LCD_init_panel() {
       jsiConsolePrintf("Unknown LCD code %d %d\n", DeviceCode, DeviceCode2);
     }
   }
-#endif				
+#endif
+#endif
   delay_ms(50);   /* delay 50 ms */
 
 #ifndef LCD_FSMC_D8
@@ -1488,6 +1497,8 @@ void LCD_init_panel() {
 
 
 static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned short y) {
+#ifdef TYTMD
+#else
   x = (gfx->data.width-1)-x;
 
   switch( LCD_Code )
@@ -1515,13 +1526,22 @@ static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned shor
 	      break;     
      case SSD2119:	 /* 3.5 LCD 0x9919 */
 	      break; 
-     case LCD_TYTMD:	/* No hardware cursor */
-	      break;
 #endif
   }
+#endif
 }
 
 static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2) {
+#ifdef TYTMD
+  LCD_WR_CMD(0x2a, x1);
+  LCD_WR_Data(x1);
+  LCD_WR_Data(x2);
+  LCD_WR_Data(x2);
+  LCD_WR_CMD(0x2b, y1);
+  LCD_WR_Data(y1);
+  LCD_WR_Data(y2);
+  LCD_WR_Data(y2);
+#else
   switch (LCD_Code) {
      default:
         // x1>=x2  and y1>=y2
@@ -1556,18 +1576,9 @@ static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned sho
         LCD_WR_CMD(0x08,x1>>8); 
         LCD_WR_CMD(0x09,x1); 
         break;
-     case LCD_TYTMD:
-        LCD_WR_CMD(0x2a, x1);
-        LCD_WR_Data(x1);
-        LCD_WR_Data(x2);
-        LCD_WR_Data(x2);
-        LCD_WR_CMD(0x2b, y1);
-        LCD_WR_Data(y1);
-        LCD_WR_Data(y2);
-        LCD_WR_Data(y2);
-        break;
 #endif
   }
+#endif
 }
 
 static inline void lcdSetFullWindow(JsGraphics *gfx) {
@@ -1578,70 +1589,67 @@ static inline void lcdSetFullWindow(JsGraphics *gfx) {
 
 void lcdFillRect_FSMC(JsGraphics *gfx, short x1, short y1, short x2, short y2) {
   // finally!
-  if (LCD_Code == LCD_TYTMD) {
-    LCD_init_pins(false);
+#ifdef TYTMD
+  LCD_init_pins(false);
+  lcdSetWindow(gfx,x1,y1,x2,y2);
+  LCD_WR_REG(0x2c);
+  LCD_WR_Data_multi(gfx->data.fgColor, (1+x2-x1)*(1+y2-y1));
+  LCD_clear_pins(false);
+#else
+  if (x1==x2) { // special case for single vertical line - no window needed
+    lcdSetCursor(gfx,x2,y1);
+    LCD_WR_REG(0x22); // start data tx
+    unsigned int i=0, l=(1+y2-y1);
+    LCD_WR_Data_multi(gfx->data.fgColor, l);
+  } else {
     lcdSetWindow(gfx,x1,y1,x2,y2);
-    LCD_WR_REG(0x2c);
-    LCD_WR_Data_multi(gfx->data.fgColor, (1+x2-x1)*(1+y2-y1));
-    LCD_clear_pins(false);
+    lcdSetCursor(gfx,x2,y1);
+    LCD_WR_REG(0x22); // start data tx
+    unsigned int i=0, l=(1+x2-x1)*(1+y2-y1);
+    LCD_WR_Data_multi(gfx->data.fgColor, l);
+    lcdSetFullWindow(gfx);
   }
-  else {
-    if (x1==x2) { // special case for single vertical line - no window needed
-      lcdSetCursor(gfx,x2,y1);
-      LCD_WR_REG(0x22); // start data tx
-      unsigned int i=0, l=(1+y2-y1);
-      LCD_WR_Data_multi(gfx->data.fgColor, l);
-    } else {
-      lcdSetWindow(gfx,x1,y1,x2,y2);
-      lcdSetCursor(gfx,x2,y1);
-      LCD_WR_REG(0x22); // start data tx
-      unsigned int i=0, l=(1+x2-x1)*(1+y2-y1);
-      LCD_WR_Data_multi(gfx->data.fgColor, l);
-      lcdSetFullWindow(gfx);
-    }
-  }
+#endif
 }
 
 unsigned int lcdGetPixel_FSMC(JsGraphics *gfx, short x, short y) {
-  if (LCD_Code == LCD_TYTMD) {
-    int ret = 0;
-    LCD_init_pins(true);
-    LCD_WR_CMD(0x2a, x);
-    LCD_WR_Data(x);
-    LCD_WR_CMD(0x2b, y);
-    LCD_WR_Data(y);
-    LCD_WR_REG(0x2e);
-    LCD_RD_Data();			// Dummy read
-    ret = (LCD_RD_Data() & 0xf8) << 8;	// Red channel
-    ret |= (LCD_RD_Data() & 0xfc) << 3;	// Green channel
-    ret |= (LCD_RD_Data() & 0xf8) >> 3;	// Blue channel
-    LCD_clear_pins(true);
-    return ret;
-  }
-  else {
-    lcdSetCursor(gfx,x,y);
-    LCD_WR_REG(0x22); // start data tx
-    return LCD_RD_Data();
-  }
+#ifdef TYTMD
+  int ret = 0;
+  LCD_init_pins(true);
+  LCD_WR_CMD(0x2a, x);
+  LCD_WR_Data(x);
+  LCD_WR_CMD(0x2b, y);
+  LCD_WR_Data(y);
+  LCD_WR_REG(0x2e);
+  LCD_RD_Data();			// Dummy read
+  ret = (LCD_RD_Data() & 0xf8) << 8;	// Red channel
+  ret |= (LCD_RD_Data() & 0xfc) << 3;	// Green channel
+  ret |= (LCD_RD_Data() & 0xf8) >> 3;	// Blue channel
+  LCD_clear_pins(true);
+  return ret;
+#else
+  lcdSetCursor(gfx,x,y);
+  LCD_WR_REG(0x22); // start data tx
+  return LCD_RD_Data();
+#endif
 }
 
 
 void lcdSetPixel_FSMC(JsGraphics *gfx, short x, short y, unsigned int col) {
-  if (LCD_Code == LCD_TYTMD) {
-    LCD_init_pins(false);
-    LCD_WR_CMD(0x2a, x);
-    LCD_WR_Data(x);
-    LCD_WR_CMD(0x2b, y);
-    LCD_WR_Data(y);
-    LCD_WR_REG(0x2c);
-    LCD_WR_Data_multi(col, 1);
-    LCD_clear_pins(false);
-  }
-  else {
-    lcdSetCursor(gfx,x,y);
-    LCD_WR_REG(34);
-    LCD_WR_Data(col);
-  }
+#ifdef TYTMD
+  LCD_init_pins(false);
+  LCD_WR_CMD(0x2a, x);
+  LCD_WR_Data(x);
+  LCD_WR_CMD(0x2b, y);
+  LCD_WR_Data(y);
+  LCD_WR_REG(0x2c);
+  LCD_WR_Data_multi(col, 1);
+  LCD_clear_pins(false);
+#else
+  lcdSetCursor(gfx,x,y);
+  LCD_WR_REG(34);
+  LCD_WR_Data(col);
+#endif
 }
 
 void lcdInit_FSMC(JsGraphics *gfx) {
