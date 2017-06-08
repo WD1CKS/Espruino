@@ -154,7 +154,7 @@ int32_t jswrap_tytkeypad_getpressed(void)
 This function should be called periodically.  A key will be pressed once it has been poll()ed eight times.
 */
 
-const char *lookup="0123456789*#GDURTBPpX";
+const char *lookup="0123456789*#GUDRTBPpX";
 
 void jswrap_tytkeypad_poll(void)
 {
