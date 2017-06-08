@@ -50,8 +50,8 @@ static uint8_t LCD_Code;
 #define  LCD_TYTMD  15 /* 160x128 LCD on Tytera Radios */
 
 
-static inline void LCD_WR_CMD(unsigned int index,unsigned int val);
-static inline unsigned int LCD_RD_CMD(unsigned int index);
+static inline void LCD_WR_CMD(uint16_t index,uint16_t val);
+static inline uint16_t LCD_RD_CMD(uint16_t index);
 
 #ifdef ILI9325_BITBANG
 #define BITBAND(addr, bitnum) ((addr & 0xF0000000)+0x2000000+((addr &0xFFFFF)<<5)+(bitnum<<2))
@@ -81,7 +81,7 @@ static inline void LCD_WR_REG(unsigned int index) {
   LCD_CS = 1;
 }
 
-static inline unsigned int LCD_RD_Data(void) {
+static inline uint16_t LCD_RD_Data(void) {
   uint16_t temp;
 
   GPIOB->CRH = (GPIOB->CRH & 0x00000000) | 0x44444444;
@@ -235,7 +235,7 @@ static inline void LCD_WR_REG(unsigned int index) {
   jshPinSetValue(LCD_FSMC_CS, 1);
 }
 
-static inline unsigned int LCD_RD_Data(void) {
+static inline uint16_t LCD_RD_Data(void) {
   _LCD_STATE(JSHPINSTATE_GPIO_IN);
   jshPinSetValue(LCD_FSMC_CS, 0);
   jshPinSetValue(LCD_FSMC_RS, 1);
@@ -320,7 +320,7 @@ static inline void LCD_WR_REG(unsigned int index) {
 #endif
 }
 
-static inline unsigned int LCD_RD_Data(void) {
+static inline uint16_t LCD_RD_Data(void) {
     return LCD_RAM;
 }
 
@@ -541,12 +541,12 @@ void LCD_init_hardware() {
 
 #endif // NOT ILI9325_BITBANG
 
-static inline void LCD_WR_CMD(unsigned int index,unsigned int val) {
+static inline void LCD_WR_CMD(uint16_t index,uint16_t val) {
   LCD_WR_REG(index);
   LCD_WR_Data(val);
 }
 
-static inline unsigned int LCD_RD_CMD(unsigned int index) {
+static inline uint16_t LCD_RD_CMD(uint16_t index) {
   LCD_WR_REG(index);
   return LCD_RD_Data();
 }
@@ -554,7 +554,7 @@ static inline unsigned int LCD_RD_CMD(unsigned int index) {
 void LCD_init_panel() {
 #ifdef TYTMD
   JshSPIInfo spii;
-  uint8_t lcd_type;
+  int lcd_type;
 
   delay_ms(70);
   jshPinSetState(JSH_PORTD_OFFSET + 7, JSHPINSTATE_GPIO_OUT);
