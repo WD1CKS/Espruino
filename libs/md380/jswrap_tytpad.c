@@ -16,9 +16,9 @@ keypad_read(void)
 	jshPinSetState(JSH_PORTE_OFFSET + 8, JSHPINSTATE_GPIO_IN_PULLUP);
 	jshPinSetState(JSH_PORTE_OFFSET + 9, JSHPINSTATE_GPIO_IN_PULLUP);
 	jshPinSetState(JSH_PORTE_OFFSET + 10, JSHPINSTATE_GPIO_IN_PULLUP);
-	jshPinSetState(JSH_PORTE_OFFSET + 11, JSHPINSTATE_GPIO_IN_PULLUP);
-	jshPinSetState(JSH_PORTE_OFFSET + 12, JSHPINSTATE_GPIO_IN_PULLUP);
-	jshPinSetState(JSH_PORTA_OFFSET + 1, JSHPINSTATE_GPIO_IN_PULLUP);
+	jshPinSetState(JSH_PORTE_OFFSET + 11, JSHPINSTATE_GPIO_IN);
+	jshPinSetState(JSH_PORTE_OFFSET + 12, JSHPINSTATE_GPIO_IN);
+	jshPinSetState(JSH_PORTA_OFFSET + 1, JSHPINSTATE_GPIO_IN);
 
 	/* Output pins */
 	jshPinSetState(JSH_PORTA_OFFSET + 6, JSHPINSTATE_GPIO_OUT);
@@ -57,7 +57,7 @@ keypad_read(void)
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 10) ? 0 : (1<<17);	// B
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 11) ? 0 : (1<<18);	// P
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 12) ? 0 : (1<<19);	// p
-	gpios |= jshPinGetValue(JSH_PORTA_OFFSET + 1) ? 0 : (1<<19);	// X
+	gpios |= jshPinGetValue(JSH_PORTA_OFFSET + 1) ? 0 : (1<<20);	// X
 
 	return gpios;
 }
@@ -101,8 +101,8 @@ Bit 9:  '9'
 Bit 10: '*'
 Bit 11: '#'
 Bit 12: 'G' (Green button)
-Bit 13: 'D' (Down arrow)
-Bit 14: 'U' (Up arrow)
+Bit 13: 'U' (Up arrow)
+Bit 14: 'D' (Down arrow)
 Bit 15: 'R' (Red button)
 Bit 16: 'T' (Top side button)
 Bit 17: 'B' (Bottom side button)
