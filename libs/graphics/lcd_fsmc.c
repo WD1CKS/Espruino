@@ -333,7 +333,7 @@ static inline void LCD_WR_Data(unsigned int val) {
 }
 
 static inline void LCD_WR_Data_multi(unsigned int val, unsigned int count) {
-  int i;
+  unsigned i;
   for (i=0;i<count;i++)
 #ifdef LCD_FSMC_D8
     LCD_RAM = (uint16_t)val;
@@ -1496,9 +1496,10 @@ void LCD_init_panel() {
 }
 
 
-static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned short y) {
 #ifdef TYTMD
+#define lcdSetCursor(gfx, x, y)
 #else
+static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned short y) {
   x = (gfx->data.width-1)-x;
 
   switch( LCD_Code )
@@ -1528,8 +1529,8 @@ static inline void lcdSetCursor(JsGraphics *gfx, unsigned short x, unsigned shor
 	      break; 
 #endif
   }
-#endif
 }
+#endif
 
 static inline void lcdSetWindow(JsGraphics *gfx, unsigned short x1, unsigned short y1, unsigned short x2, unsigned short y2) {
 #ifdef TYTMD
