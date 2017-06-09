@@ -31,8 +31,8 @@ void jswrap_md380_modules(void)
 		src->varData.nativeStr.ptr = _md380_lib_js_start;
 		src->varData.nativeStr.len = _md380_lib_js_size;
 		jswrap_modules_addCached(mod, src);
-		//jsvUnLock(src);
-		//jsvUnLock(mod);
+		jsvUnLock(src);
+		jsvUnLock(mod);
 	}
 	else
 		jsiConsolePrintf("Size %d out of range\n", _md380_lib_js_size);
