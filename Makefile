@@ -597,6 +597,13 @@ ifdef USE_TYTROTATO
   WRAPPERSOURCES += libs/md380/jswrap_tytrotato.c
 endif
 
+ifdef USE_MD380MODS
+  DEFINES += -DUSE_MD380MODS
+  INCLUDE += -I$(ROOT)/libs/md380
+  PRECOMPILED_OBJS += libs/md380/md380_lib.o
+  WRAPPERSOURCES += libs/md380/jswrap_md380_modules.c
+endif
+
 ifdef USE_NFC
   DEFINES += -DUSE_NFC -DNFC_HAL_ENABLED=1
   INCLUDE          += -I$(NRF5X_SDK_PATH)/components/nfc/t2t_lib
