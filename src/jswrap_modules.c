@@ -22,6 +22,9 @@
 #ifdef USE_FILESYSTEM
 #include "jswrap_fs.h"
 #endif
+#ifdef USE_MD380MODS
+#include "jswrap_md380_modules.h"
+#endif
 
 /*JSON{
   "type" : "class",
@@ -159,6 +162,10 @@ void jswrap_modules_removeCached(JsVar *id) {
   }
 
   jsvUnLock(moduleList);
+
+#ifdef USE_MD380MODS
+  jswrap_md380_modules();
+#endif
 }
 
 /*JSON{
@@ -174,6 +181,9 @@ void jswrap_modules_removeAllCached() {
   if (!moduleList) return; // out of memory
   jsvRemoveAllChildren(moduleList);
   jsvUnLock(moduleList);
+#ifdef USE_MD380MODS
+  jswrap_md380_modules();
+#endif
 }
 
 /*JSON{
