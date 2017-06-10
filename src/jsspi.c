@@ -85,6 +85,18 @@ int jsspiSoftwareFunc(
         jshPinSetValue(inf->pinMOSI, (data>>bit)&1 );
       if (inf->pinSCK != PIN_UNDEFINED)
         jshPinSetValue(inf->pinSCK, !CPOL );
+#ifdef TYTMD
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+#endif
       if (inf->pinMISO != PIN_UNDEFINED)
         result = (result<<1) | (jshPinGetValue(inf->pinMISO )?1:0);
       if (inf->pinSCK != PIN_UNDEFINED)
@@ -96,6 +108,18 @@ int jsspiSoftwareFunc(
         jshPinSetValue(inf->pinMOSI, (data>>bit)&1 );
       if (inf->pinSCK != PIN_UNDEFINED)
         jshPinSetValue(inf->pinSCK, CPOL );
+#ifdef TYTMD
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+      asm("NOP");
+#endif
       if (inf->pinMISO != PIN_UNDEFINED)
         result = (result<<1) | (jshPinGetValue(inf->pinMISO )?1:0);
     }
