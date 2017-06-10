@@ -29,6 +29,10 @@ md380.prototype.set_backlight = function (val, freq) {
     analogWrite(C6, clamp(0, 1, val), { freq : freq || 120 });
 }
 
+md380.prototype.set_led = function (led, on) {
+    digitalWrite(led == 0 ? E0 : E1, on ? HIGH : LOW);
+}
+
 md380.prototype.StatusBar = function () {
 
     const SB_X = 0;
