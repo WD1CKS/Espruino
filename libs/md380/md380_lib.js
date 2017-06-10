@@ -134,6 +134,21 @@ md380.prototype.ReadSecurity = function (addr) {
     return ret;
 };
 
+md380.prototype.cs_5000_read = function(reg) {
+  E6.reset();
+  var c5 = new SPI();
+  c5.setup({sck:C13, miso:E3, mosi:E5, mode:1});
+  var ret = c5.send([0x80, reg, 0xa5], E2);
+  return ret[2];
+};
+
+md380.prototype.cs_5000_write = function (reg, val) {
+  E6.reset();
+  var c5 = new SPI();
+  c5.setup({sck:C13, miso:E3, mosi:E5, mode:1});
+  c5.send([0x00, reg, val], E2);
+};
+
 // const COLOR_BG = [ .45, .63, .90 ]; // Background
 // LCD.setColor.apply(LCD, COLOR_BG);
 // LCD.fillRect(0, 0, 159, 114);
