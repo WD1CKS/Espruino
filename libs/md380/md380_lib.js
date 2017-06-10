@@ -2,7 +2,23 @@
 //var width_cp437_8x8 = atob("BQgICAgICAUIBwgIBwgICAgIBwUICAcIBgYICAcICAgFBAUHBwcIAwQECAYDBwIHBwYHBwgHBwcHBwIDBQcFBwcHBwcHBwcHBwQHBwcHBwcHBwcHBwcHBwcHBwUIBQgIAwcHBwcHBgcHBAcHBAcHBwcHBwcHBwcHBgcGBgIGBwcHBwcHBwcHBwcHBwUIBQcHBgcHBwcHBwcHBwcHBwYICAcEBwcHBwcGBwcHCAgCBwcICAgCBQUHBwUHBAcHBwUFBQgIBQgIBQUFBQgIBQgICAgICAUFBQUICAUFCAgFBAgHBwcHBwcIBwYHBwcICAUHBwYHBwUFBwcFAwMIBgUFBQUICAgICAgFCAcICAcICAgICAcHCAgHCAcHCAgICAgIBQUGCAcICAQFBQgHBAcDCAgHBwcIBwcHBwcDBAYHBgcIBwgICAgICAcFCAgICAgICAcIBwcHBwgIBwgFCAUICAQICAcIBwcICAUHCAUIBwcICAgHBggHCAgHBwcDBwgIBwgHCAgICAcIBwcHCAYIBwcICAcHBwgIBwgHCAgHCAgIBQcIBwcHBgcHBwgIAwgICAgIAwYGCAgGCAYICAgGBgUICAUICAUGBgYICAYICAgICAgGBQUGCAgGBQgIBQQICAcHCAcICAgHCAgHCAgGBwcHBwcFBgcIBgMDCAYFBQU=");
 
 function clamp(min, max, val) {
-  return (val >= min && val <= max ? val : (val < min ? min : max));
+    return (val >= min && val <= max ? val : (val < min ? min : max));
+}
+
+function draw_bargraph(x, y, w, h, steps, bg, lo, md, hi, val) {
+    LCD.setColor.apply(LCD, bg);
+    LCD.fillRect(x, y, x + w - 1, y + h - 1);
+    var bw = Math.floor(w / steps); // width of an individual bar
+    var nb = Math.round((w / bw) * val); // number of bars to show
+    if (nb < 1) return; // We've cleared the space and don't need to show anything
+    LCD.setColor.apply(LCD, val >= .66 ? hi : (val >= .33 ? md : lo));
+    for (var n = 0; n < nb; n++) {
+        var sx = x + (n * bw);
+        var ex = sx + bw - 1;
+        var ey = y + h - 1;
+        var sy = ey - Math.floor((h / steps) * n); // top y of this bar
+        LCD.fillRect(sx, sy, ex, ey);
+    }
 }
 
 function md380() {
@@ -10,120 +26,108 @@ function md380() {
 }
 
 md380.prototype.set_backlight = function (val, freq) {
-  analogWrite(C6, clamp(0, 1, val), { freq : freq || 120 });
+    analogWrite(C6, clamp(0, 1, val), { freq : freq || 120 });
 }
 
 md380.prototype.StatusBar = function () {
 
-  const SB_X = 0;
-  const SB_Y = 115;
-  const SB_W = 160;
-  const SB_H = 12;
-  const SB_IC_H = SB_H - 4;
-  const SB_IC_Y = 117;
+    const SB_X = 0;
+    const SB_Y = 115;
+    const SB_W = 160;
+    const SB_H = 12;
+    const SB_IC_H = SB_H - 4;
+    const SB_IC_Y = 117;
 
-  const RSSI_X = 4;
-  const RSSI_W = 26;
+    const RSSI_X = 4;
+    const RSSI_W = 26;
 
-  const SPK_X = 74;
+    const SPK_X = 74;
 
-  const BATT_X = 140;
-  const BATT_W = 16;
+    const BATT_X = 140;
+    const BATT_W = 16;
 
-  const COLOR_LO = [ .84, .12, .22 ];
-  const COLOR_MD = [ 1, .52, 0 ];
-  const COLOR_HI = [ 0, .75, .12 ];
+    const COLOR_LO = [ .84, .12, .22 ];
+    const COLOR_MD = [ 1, .52, 0 ];
+    const COLOR_HI = [ 0, .75, .12 ];
 
-  const COLOR_SB = [ .77, .77, .77 ]; // Status bar
-  const COLOR_BD = [ 0, 0, 0 ]; // Borders
+    const COLOR_SB = [ .77, .77, .77 ]; // Status bar
+    const COLOR_BD = [ 0, 0, 0 ]; // Borders
 
-  this.update_battery = function (val) {
-    // Clear dynamic area
-    LCD.setColor.apply(LCD, COLOR_SB);
-    LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + BATT_W - 3, SB_IC_Y + SB_IC_H - 2);
-    // Fill with appropriate width & colour
-    LCD.setColor.apply(LCD, val >= .5 ? COLOR_HI : (val >= .25 ? COLOR_MD : COLOR_LO));
-    LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + 1 + Math.floor((BATT_W - 4) * val), SB_IC_Y + SB_IC_H - 2);
-    // Overlay level markers
-    LCD.setColor.apply(LCD, COLOR_BD);
-    for (var n = 1; n < 6; n++) {
-        var xx = BATT_X + 1 + (2 * n);
-        LCD.drawLine(xx, SB_IC_Y + 2, xx, SB_IC_Y + SB_IC_H - 2);
+    this.update_battery = function (val) {
+        // Clear dynamic area
+        LCD.setColor.apply(LCD, COLOR_SB);
+        LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + BATT_W - 3, SB_IC_Y + SB_IC_H - 2);
+        // Fill with appropriate width & colour
+        LCD.setColor.apply(LCD, val >= .5 ? COLOR_HI : (val >= .25 ? COLOR_MD : COLOR_LO));
+        LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + 1 + Math.floor((BATT_W - 4) * val), SB_IC_Y + SB_IC_H - 2);
+        // Overlay level markers
+        LCD.setColor.apply(LCD, COLOR_BD);
+        for (var n = 1; n < 6; n++) {
+            var xx = BATT_X + 1 + (2 * n);
+            LCD.drawLine(xx, SB_IC_Y + 1, xx, SB_IC_Y + SB_IC_H - 2);
+        }
     }
-  }
 
-  this.update_rssi = function (val) {
-    var ey = SB_IC_Y + SB_IC_H - 2;
-    // Clear dynamic area
-    LCD.setColor.apply(LCD, COLOR_SB);
-    LCD.fillRect(RSSI_X + 1, SB_IC_Y, RSSI_X + RSSI_W - 2, ey);
-    // I'm not crazy about this, but it looks okay.
-    var bars = Math.round((clamp(0, 1, val) * 100) / 16);
-    if (bars < 1) return;
-    LCD.setColor.apply(LCD, bars <= 2 ? COLOR_LO : (bars <= 4 ? COLOR_MD : COLOR_HI));
-    for (var n = 0; n < bars; n++) {
-      var sx = RSSI_X + (n * 4) + 1;
-      var ex = sx + 3;
-      LCD.fillRect(sx, SB_IC_Y + 5 - n, ex, ey);
+    this.update_rssi = function (val) {
+        draw_bargraph(RSSI_X + 1, SB_IC_Y, RSSI_W - 2, SB_IC_H - 1, 6, COLOR_SB, COLOR_LO, COLOR_MD, COLOR_HI, clamp(0, 1, val));
     }
-  }
 
-  this.update_volume = function (val) {
-    var sx = SPK_X + 6;
-    // Clear dynamic area
-    LCD.setColor.apply(LCD, COLOR_SB);
-    LCD.fillRect(sx, SB_IC_Y - 1, sx + 19, SB_IC_Y + SB_IC_H);
-    // Find number of bars to draw
-    var bars = Math.round((clamp(0, 1, val) * 100) / 10);
-    if (bars < 1) return;
-    LCD.setColor.apply(LCD, COLOR_BD);
-    for (var n = 0; n < bars; n++) {
-      var _sx = sx + (n * 2);
-      var _sy = SB_IC_Y + 3 - Math.floor(n / 2);
-      var _ey = SB_IC_Y + 4 + Math.floor(n / 2);
-      LCD.drawLine(_sx, _sy, _sx, _ey);
+    this.update_volume = function (val) {
+        var sx = SPK_X + 6;
+        // Clear dynamic area
+        LCD.setColor.apply(LCD, COLOR_SB);
+        LCD.fillRect(sx, SB_IC_Y - 1, sx + 19, SB_IC_Y + SB_IC_H);
+        // Find number of bars to draw
+        var bars = Math.round((clamp(0, 1, val) * 100) / 10);
+        if (bars < 1) return;
+        LCD.setColor.apply(LCD, COLOR_BD);
+        for (var n = 0; n < bars; n++) {
+            var _sx = sx + (n * 2);
+            var _sy = SB_IC_Y + 3 - Math.floor(n / 2);
+            var _ey = SB_IC_Y + 4 + Math.floor(n / 2);
+            LCD.drawLine(_sx, _sy, _sx, _ey);
+        }
     }
-  }
 
-  this.draw_static = function () {
-    // Status bar background
-    LCD.setColor.apply(LCD, COLOR_SB);
-    LCD.fillRect(SB_X, SB_Y, SB_X + SB_W - 1, SB_Y + SB_H - 1);
-    LCD.setColor.apply(LCD, COLOR_BD);
-    // S-Meter outline
-    LCD.drawLine(RSSI_X, SB_IC_Y, RSSI_X, SB_IC_Y + SB_IC_H - 2);
-    LCD.drawLine(RSSI_X, SB_IC_Y + SB_IC_H - 1, RSSI_X + RSSI_W - 1, SB_IC_Y + SB_IC_H - 1);
-    LCD.drawLine(RSSI_X + RSSI_W - 1, SB_IC_Y, RSSI_X + RSSI_W - 1, SB_IC_Y + SB_IC_H - 2);
-    // Speaker icon
-    LCD.fillPoly([SPK_X, SB_IC_Y + 2, SPK_X + 2, SB_IC_Y + 2, SPK_X + 4, SB_IC_Y, SPK_X + 4, SB_IC_Y + 7, SPK_X + 2, SB_IC_Y + 5, SPK_X, SB_IC_Y + 5]);
-    // Battery outline
-    LCD.drawRect(BATT_X, SB_IC_Y, BATT_X + BATT_W - 2, SB_IC_Y + SB_IC_H - 1);
-    LCD.drawRect(BATT_X + BATT_W - 1, SB_IC_Y + 2, BATT_X + BATT_W, SB_IC_Y + SB_IC_H - 2);
-  }
-
-  this.demo = function (cease) {
-    var evt = { rssi : null, vol : null, batt : null }, rssi = 0, vol = 0, batt = 0;
-    if (cease) {
-      Object.keys(evt).forEach((e) => { if (evt[e] !== null) clearInterval(evt[e]); });
-    } else {
-      this.draw_static();
-      var self = this;
-      evt.rssi = setInterval(() => { self.update_rssi(rssi); rssi = (rssi + .1) % 1.1; }, 300);
-      evt.vol = setInterval(() => { self.update_volume(vol); vol = (vol + .1) % 1.1; }, 250);
-      evt.batt = setInterval(() => { self.update_battery(batt); batt = (batt + .1) % 1.1; }, 200);
+    this.draw_static = function () {
+        // Status bar background
+        LCD.setColor.apply(LCD, COLOR_SB);
+        LCD.fillRect(SB_X, SB_Y, SB_X + SB_W - 1, SB_Y + SB_H - 1);
+        LCD.setColor.apply(LCD, COLOR_BD);
+        // S-Meter outline
+        LCD.drawLine(RSSI_X, SB_IC_Y, RSSI_X, SB_IC_Y + SB_IC_H - 2);
+        LCD.drawLine(RSSI_X, SB_IC_Y + SB_IC_H - 1, RSSI_X + RSSI_W - 1, SB_IC_Y + SB_IC_H - 1);
+        LCD.drawLine(RSSI_X + RSSI_W - 1, SB_IC_Y + 1, RSSI_X + RSSI_W - 1, SB_IC_Y + SB_IC_H - 2);
+        // Speaker icon
+        LCD.fillPoly([SPK_X, SB_IC_Y + 2, SPK_X + 2, SB_IC_Y + 2, SPK_X + 4, SB_IC_Y, SPK_X + 4, SB_IC_Y + 7, SPK_X + 2, SB_IC_Y + 5, SPK_X, SB_IC_Y + 5]);
+        // Battery outline
+        LCD.drawRect(BATT_X, SB_IC_Y, BATT_X + BATT_W - 2, SB_IC_Y + SB_IC_H - 1);
+        LCD.drawRect(BATT_X + BATT_W - 1, SB_IC_Y + 2, BATT_X + BATT_W, SB_IC_Y + SB_IC_H - 2);
     }
-  }
+
+    this.demo = function (cease) {
+        var evt = { rssi : null, vol : null, batt : null }, rssi = 0, vol = 0, batt = 0;
+        if (cease) {
+            Object.keys(evt).forEach((e) => { if (evt[e] !== null) clearInterval(evt[e]); });
+        } else {
+            this.draw_static();
+            var self = this;
+            evt.rssi = setInterval(() => { self.update_rssi(rssi); rssi = (rssi + .1) % 1.1; }, 300);
+            evt.vol = setInterval(() => { self.update_volume(vol); vol = (vol + .1) % 1.1; }, 250);
+            evt.batt = setInterval(() => { self.update_battery(batt); batt = (batt + .1) % 1.1; }, 200);
+        }
+    }
 
 }
 
 md380.prototype.ReadSecurity = function (addr) {
-  var ret;
-  D7.reset();
-  SPI1.setup({sck:B3, miso:B4, mosi:B5, baud:84000000, mode:3});
-  SPI1.send([0x48, (addr>>16)&0xff, (addr>>8)&0xff, (addr)&0xff, 0xA5]);
-  ret = SPI1.send([0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5]);
-  D7.set();
-  return ret;
+    var ret;
+    D7.reset();
+    SPI1.setup({sck:B3, miso:B4, mosi:B5, baud:84000000, mode:3});
+    SPI1.send([0x48, (addr>>16)&0xff, (addr>>8)&0xff, (addr)&0xff, 0xA5]);
+    ret = SPI1.send([0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5]);
+    D7.set();
+    return ret;
 };
 
 // const COLOR_BG = [ .45, .63, .90 ]; // Background
@@ -135,5 +139,5 @@ md380.prototype.ReadSecurity = function (addr) {
 // sb.demo();
 
 exports.get = function () {
-	return new md380();
+    return new md380();
 }
