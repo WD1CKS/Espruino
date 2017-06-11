@@ -388,7 +388,7 @@ void LCD_init_pins(bool read)
   if (read) {
     FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
       (uint32_t)/* FSMC_AddressSetupTime */ 3 |
-      (/* FSMC_AddressHoldTime */ 75 << 4 )|
+      (/* FSMC_AddressHoldTime */ 11 << 4 )|
       (/* FSMC_DataSetupTime */ 100 << 8) |
       (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
       (/* FSMC_CLKDivision */ 0 << 20) |
