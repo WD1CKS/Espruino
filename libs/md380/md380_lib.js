@@ -270,7 +270,7 @@ md380.prototype.init_pins = function() {
 	E13.reset();
 	E14.mode('input');			// Rotato ECN0
 	E15.mode('input');			// Rotato ECN1
-}
+};
 
 md380.prototype.fm_mode = function(freq) {
 	this.init_pins();
@@ -288,7 +288,7 @@ md380.prototype.fm_mode = function(freq) {
 	B9.set();
 	E13.set();
 	return true;
-}
+};
 
 var last_vco_freq = 0;
 function set_vco(freq, high_res) {
@@ -297,6 +297,7 @@ function set_vco(freq, high_res) {
 	var fractional;
 	var divider;
 	var dividend;
+	var j;
 
 	function prog_sky(addr, val) {
 		var i;
@@ -316,15 +317,7 @@ function set_vco(freq, high_res) {
 
 	Mdiv = 32;
 	fractional = freq / (osc / Mdiv);
-	while(fractional < 37.5) {
-		Mdiv++;
-		fractional = freq / (osc / Mdiv);
-		if (Mdiv <= 0) {
-			console.log("Can't get fractional high enough!");
-			return false;
-		}
-	}
-	while(fractional > 537.5) {
+	while(fractional >= 537.5) {
 		Mdiv--;
 		fractional = freq / (osc / Mdiv);
 		if (Mdiv >= 32) {
@@ -333,7 +326,7 @@ function set_vco(freq, high_res) {
 		}
 	}
 	divider = Math.round(fractional) - 32;
-	if (divider < 6 || divider > 505) {
+	if (divider < 6) {
 		console.log("Divider "+divider+" out of range!");
 		return false;
 	}
@@ -353,15 +346,16 @@ function set_vco(freq, high_res) {
 		prog_sky(2, dividend & 0xff);
 		prog_sky(1, dividend >> 8);
 	}
-	else
+	else {
 		prog_sky(1, dividend);
+	}
 
 	// Wait for PLL lock...
-	for (j=0; j<500; j++) {
+	for (j=0; j<10; j++) {
 		if (D10.read())
 			break;
 	}
-	if (j == 500)
+	if (j === 10)
 		return false;
 
 	if (high_res)
@@ -376,35 +370,59 @@ var last_set_freq = 0;
 md380.prototype.set_freq = function(freq, high) {
 	var ret;
 
-	ret = set_vco(freq-49.9415);
+	if (isNaN(freq))
+		return false;
+
+	// TODO: Handle VHF radios as well
+	if (freq < 400 || freq > 480)
+		return false;
+	ret = set_vco(freq-49.9415, high);
 	if (ret === false)
 		return false;
 	last_set_freq = ret+49.9415;
 	return true;
-}
+};
 
 md380.prototype.get_freq = function() {
 	return last_set_freq;
-}
+};
 
-md380.prototype.scan = function(start, end, step) {
+md380.prototype.scan = function(start, end, step, squelch) {
+	// TODO: Handle VHF radios as well
+	if (start === undefined)
+		start = 400;
+	if (end === undefined)
+		end = 480;
+	if (step === undefined)
+		step = 0.0125;
+	if (squelch === undefined)
+		squelch = 0.4;
+
+	if (step == 0)
+		return false;
+
+	if (start < 400 || start > 480)
+		return false;
+
+	if (end < 400 || end > 480)
+		return false;
+
 	var freq = start;
-	var i;
-	var j;
 	var rssi;
 
 	this.fm_mode(freq);
-	while(1) {
+	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
 		if (this.set_freq(freq)) {
 			rssi = analogRead(B0);
-			if (rssi > 0.4)
+			if (rssi > squelch)
 				return last_set_freq;
 			freq += step;
-			if (freq > end)
-				break;
 		}
+		else
+			return false;
 	}
-}
+	return false;
+};
 
 // const COLOR_BG = [ .45, .63, .90 ]; // Background
 // LCD.setColor.apply(LCD, COLOR_BG);
