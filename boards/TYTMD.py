@@ -29,7 +29,8 @@ info = {
      'GRAPHICS',
      'TYTKEYPAD',
      'TYTROTATO',
-     'MD380MODS'
+     'MD380MODS',
+     'SPIFFS'
    ],
    'makefile' : [
      'DEFINES+=-DUSE_USB_OTG_FS=1 -DSTM32F40_41xxx -DUSB_NO_VBUS_SENSE',
@@ -92,6 +93,22 @@ devices = {
             'pin_rs' : 'D12',
             'pin_bl' : 'C6',
             'pin_reset' : 'D13'
+          },
+  'SPIFFS' : {
+            'GC_STATS' : 0,
+            'USE_MAGIC' : 1,
+            'USE_MAGIC_LENGTH' : 1,
+            'SINGLETON' : 1,
+            'TEST_VISUALISATION' : 0,
+            'CFG_PHYS_SZ(ignore)' : 15728640,	# 15 MB since we leave the 1st MB alone
+            'CFG_PHYS_ERASE_SZ(ignore)' : 65536,# 64K physical block size
+            'CFG_PHYS_ADDR(ignore)' : 1048576,	# Start 1MB in
+            'CFG_LOG_PAGE_SZ(ignore)' : 256,	# Logical page size same as physical page size
+            'CFG_LOG_BLOCK_SZ(ignore)' : 65536,	# Logical block size same as physical erase size
+            'pin_sclk' : 'B3',
+            'pin_mosi' : 'B4',
+            'pin_miso' : 'B5',
+            'pin_ss' : 'D7'
           },
 };
 

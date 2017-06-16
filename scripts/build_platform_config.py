@@ -406,7 +406,7 @@ if "CAPSENSE" in board.devices:
   codeOutDevicePin("CAPSENSE", "pin_rx", "CAPSENSE_RX_PIN")
   codeOutDevicePin("CAPSENSE", "pin_tx", "CAPSENSE_TX_PIN")
 
-for device in ["USB","SD","LCD","JTAG","ESP8266","IR"]:
+for device in ["USB","SD","LCD","JTAG","ESP8266","IR","SPIFFS"]:
   if device in board.devices:
     for entry in board.devices[device]:
       if entry[:3]=="pin": usedPinChecks.append("(PIN)==" + toPinDef(board.devices[device][entry])+"/* "+device+" */")
@@ -423,6 +423,13 @@ if "ESP8266" in board.devices:
   for entry in board.devices["ESP8266"]:
     if entry[0:4]=="pin_":
       codeOut("#define ESP8266_"+str(entry[4:].upper())+" "+toPinDef(board.devices["ESP8266"][entry]))
+
+if "SPIFFS" in board.devices:
+  for entry in board.devices["SPIFFS"]:
+    if entry[0:4]=="pin_":
+      codeOutDevicePin("SPIFFS", entry, "SPIFFS_SPI_"+str(entry[4:].upper()))
+    else:
+      codeOut("#define SPIFFS_"+entry.upper()+" "+str(board.devices["SPIFFS"][entry]))
 
 codeOut("")
 

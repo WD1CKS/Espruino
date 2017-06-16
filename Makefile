@@ -588,7 +588,7 @@ ifdef USE_TYTKEYPAD
   DEFINES += -DUSE_TYTKEYPAD
   INCLUDE += -I$(ROOT)/libs/md380
   WRAPPERSOURCES += libs/md380/jswrap_tytpad.c
-  WRAPPERSOURCES += libs/md380/button_debounce.c
+  SOURCES += libs/md380/button_debounce.c
 endif
 
 ifdef USE_TYTROTATO
@@ -602,6 +602,17 @@ ifdef USE_MD380MODS
   INCLUDE += -I$(ROOT)/libs/md380
   PRECOMPILED_OBJS += libs/md380/md380_lib.o
   WRAPPERSOURCES += libs/md380/jswrap_md380_modules.c
+endif
+
+ifdef USE_SPIFFS
+  DEFINES += -DUSE_SPIFFS
+  INCLUDE += -I$(ROOT)/libs/spiffs/src
+  SOURCES += libs/spiffs/src/spiffs_check.c \
+             libs/spiffs/src/spiffs_hydrogen.c \
+             libs/spiffs/src/spiffs_nucleus.c \
+             libs/spiffs/src/spiffs_cache.c \
+             libs/spiffs/src/spiffs_gc.c
+  WRAPPERSOURCES += libs/spiffs/jswrap_spiffs.c
 endif
 
 ifdef USE_NFC
@@ -707,6 +718,8 @@ endif
 .PHONY:  proj
 
 all: 	 proj
+
+libs/md380/md380_lib.o: libs/md380/md380_lib.js libs/md380/md380_lib.s
 
 boardjson: scripts/build_board_json.py $(WRAPPERSOURCES)
 	@echo Generating Board JSON
