@@ -393,9 +393,9 @@ md380.prototype.scan = function(start, end, step) {
 	var j;
 	var rssi;
 
-	fm_mode(freq);
+	this.fm_mode(freq);
 	while(1) {
-		if (set_freq(freq)) {
+		if (this.set_freq(freq)) {
 			rssi = analogRead(B0);
 			if (rssi > 0.4)
 				return last_set_freq;
