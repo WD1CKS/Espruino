@@ -320,7 +320,7 @@ function set_vco(freq, high_res) {
 	while(fractional >= 537.5) {
 		Mdiv--;
 		fractional = freq / (osc / Mdiv);
-		if (Mdiv >= 32) {
+		if (Mdiv < 1) {
 			console.log("Can't get fractional low enough!");
 			return false;
 		}
