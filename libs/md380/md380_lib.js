@@ -150,7 +150,7 @@ md380.prototype.cs_5000_write = function (reg, val) {
 };
 
 md380.prototype.init_pins = function() {
-  A0.mode('analog');        // ??
+  A0.mode('analog');        // Volume pot position
   A1.mode('analog');        // Main battery level, divided by three
   A2.mode('analog');        // ?? Analog FM in?
   A3.mode('analog');        // ?? VOX
