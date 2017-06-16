@@ -150,7 +150,7 @@ md380.prototype.cs_5000_write = function (reg, val) {
 };
 
 md380.prototype.init_pins = function() {
-	A0.mode('analog');			// ??
+	A0.mode('analog');			// Volume pot input (Labeled as "TX_LED")
 	A1.mode('analog');			// Main battery level, divided by three
 	A2.mode('analog');			// ?? Analog FM in?
 	A3.mode('analog');			// ?? VOX
@@ -161,30 +161,30 @@ md380.prototype.init_pins = function() {
 	A6.mode('input_pullup');		// Keypad (K1)
 	A7.mode('output');			// Power switch override
 	A7.reset();
-	A8.mode('output');			// "SAVE"
+	A8.mode('output');			// ?? "SAVE" Controls the 5C power bus, needed at least for analog FM RX
 	A8.reset();
-	A9.mode('output');			// VCOVCC_SW
+	A9.mode('output');			// ?? VCOVCC_SW Needs to be set to RX analog FM. Schematic suggests needs to be reset for TX??
 	A9.reset();
-	A10.mode('output');			// DMR_SW
+	A10.mode('output');			// ?? DMR_SW
 	A10.reset();
-	//A11.mode('af_output');		// USB
-	//A12.mode('af_output');		// USB
-	A13.mode('output');			// Wide/Narrow FM switch
+	//A11.mode('af_output');		// USB USB_D-
+	//A12.mode('af_output');		// USB USB_D+
+	A13.mode('output');			// Wide/Narrow FM switch Set is Wide, Reset is Narrow W/N_SW
 	A13.reset();
-	A14.mode('output');			// MICPWR_SW
+	A14.mode('output');			// ?? MICPWR_SW
 	A14.reset();
-	A15.mode('af_output');			// AF6, I2S_FS
+	A15.mode('af_output');			// ?? AF6, I2S_FS
 
-	B0.mode('analog');			// RSSI
-	B1.mode('analog');			// ?? BUSY
-	B2.mode('output');			// ?? FM_SW
+	B0.mode('analog');			// Receive Signal Strength Indicator RSSI
+	B1.mode('analog');			// ?? FM IF Detector "NREC" (Rectifier Output - Noise Detection Output) BUSY
+	B2.mode('output');			// ?? Seems to toggle FM audio input on A2, not verified FM_SW
 	B2.reset();
 	//B3.mode('af_output');			// SPI1 (Flash) SCLK
 	//B4.mode('af_output');			// SPI1 (Flash) SDO
 	//B5.mode('af_output');			// SPI1 (Flash) SDI
 	SPI1.setup({sck:B3, miso:B4, mosi:B5, baud:84000000, mode:3});
-	//B6.mode('af_opendrain');		// I2C1 SCL
-	//B7.mode('af_opendrain');		// I2C1 SDA
+	//B6.mode('af_opendrain');		// ?? I2C1 SCL
+	//B7.mode('af_opendrain');		// ?? I2C1 SDA
 	I2C1.setup({scl:B6, sda:B7, bitrate:400000});
 	B8.mode('output');			// Speaker mute SPK_C
 	B8.set();
@@ -203,23 +203,23 @@ md380.prototype.init_pins = function() {
 	C1.mode('input');			// ?? SYS_INTER
 	C2.mode('input');			// ?? RF_TX_INTER
 	C3.mode('analog');			// ?? 2T/5T (And RF_RX_INTER -- not connected?)
-	C4.mode('output');			// RF Amplifier RF_APC_SW
+	C4.mode('output');			// RF Amplifier RF_APC_SW - Has blown up one radio when pulled high during RX (AF amp and Analog FM enabled)
 	C4.reset();
-	C5.mode('output');			// ?? 5TC seems to swith RF TX path
+	C5.mode('output');			// ?? 5TC seems to switch RF TX path (Analog FM only?)
 	C5.reset();
 	C6.mode('output');			// LCD Backlight LAMP
 	//C6.reset();				// Don't touch, part of LCD library
 	C7.mode('opendrain');			// ?? CTC/DCS_OUT
 	C8.mode('output');			// Noise generator when AF amp is on PWM through LPF VOL_OUT ?? 2T/5T/DTMF_OUT output (beeps, and tones during transmit?)
 	C8.reset();
-	C9.mode('output');			// ?? 5RC Switches RX "stuff"?
+	C9.mode('output');			// ?? 5RC Switches RX "stuff" seems to be Analog FM only?
 	C9.reset();
 	//C10.mode('af_output');		// ?? I2S_CK AF-6
 	//C11.mode('af_output');		// ?? I2S_RX AF 5
 	//C12.mode('af_output');		// ?? I2S_TX AF=6
 	// TODO: I2S?	Anyone?
 	SPI3.setup({sck:C10, miso:C11, mosi:C12, baud:84000000, mode:3});
-	C13.mode('output');			// BSHIFT - SPI for C5000 "user"
+	C13.mode('output');			// DMR "user" SPI Clock BSHIFT
 	C13.reset();
 	C14.mode('input');			// ?? 32.768K_IN
 	C15.mode('input');			// ?? 32.768K_OUT
@@ -227,19 +227,19 @@ md380.prototype.init_pins = function() {
 	//D0.mode('af_output');			// LCD D2 - FSMC
 	//D1.mode('af_output');			// LCD D3 - FSMC
 	D2.mode('input');			// Keypad - K2
-	D3.mode('input');			// Keypad = K3
+	D3.mode('input');			// Keypad - K3
 	//D4.mode('af_output');			// LCD RD - FSMC
 	//D5.mode('af_output');			// LCD_WR - FSMC
-	D6.mode('output');			// LCD Chip Select (active low)
+	D6.mode('output');			// LCD Chip Select - Active Low
 	D6.set();
-	D7.mode('output');			// Flash CS0 (active low)
+	D7.mode('output');			// SPI1 Flash Chip Select - Active Low FLASH_CS0
 	D7.set();
-	D8.mode('output');			// Flash CS1 (active low), nothing here?
+	D8.mode('output');			// ?? Flash CS1 (active low), nothing here?
 	D8.set();
-	D9.mode('output');			// Flash CS2 (active low), nothing here?
+	D9.mode('output');			// ?? Flash CS2 (active low), nothing here?
 	D9.set();
-	D10.mode('input');			// ?? PLL_LD - Lock detected on PLL chip
-	D11.mode('output');			// ?? PLL_CS - PLL chip select (active low)
+	D10.mode('input');			// Lock detected on PLL chip - PLL_LD
+	D11.mode('output');			// PLL chip select - Active Low PLL_CS
 	D11.set();
 	//D12.mode('af_output');		// LCD_RS - FSMC
 	D13.mode('output');			// LCD Reset - LCD_RST
@@ -251,12 +251,12 @@ md380.prototype.init_pins = function() {
 	E0.reset();
 	E1.mode('output');			// Red (TX) LED
 	E1.reset();
-	E2.mode('output');			// ?? DMR Chip Select - Active Low
+	E2.mode('output');			// DMR "user" SPI Chip Select - Active Low
 	E2.set();
-	E3.mode('input');			// ?? C5000 data input DMR_SCLK(Nope)/PLL_CLK(Nope)
-	E4.mode('output');			// ?? DMR_SDO -- no it isn't... seems to be PLL_CLK
+	E3.mode('input');			// DMR "user" SPI Input (DMR_SCLK/PLL_CLK on schematic appears wrong)
+	E4.mode('output');			// PLL serial data clock ("DMR_SDO" on schematic appears wrong)
 	E4.reset();
-	E5.mode('output');			// ?? DMR_SDI/PLL_DAT - this may actually be correct...
+	E5.mode('output');			// PLL Data output, DMR "user" SPI Data output DMR_SDI/PLL_DAT
 	E5.reset();
 	E6.mode('output');			// ?? DMR_SLEEP
 	E6.reset();
@@ -266,7 +266,7 @@ md380.prototype.init_pins = function() {
 	//E10.mode('af_output');		// LCD D6 - FSMC
 	E11.mode('input');			// PTT Key
 	E12.mode('input');			// External PTT Key
-	E13.mode('output');			// ?? FM_MUTE
+	E13.mode('output');			// FM_MUTE Active Low (ie: FM is muted when this is low)
 	E13.reset();
 	E14.mode('input');			// Rotato ECN0
 	E15.mode('input');			// Rotato ECN1
