@@ -149,6 +149,129 @@ md380.prototype.cs_5000_write = function (reg, val) {
   c5.send([0x00, reg, val], E2);
 };
 
+md380.prototype.init_pins = function() {
+  A0.mode('analog');        // ??
+  A1.mode('analog');        // Main battery level, divided by three
+  A2.mode('analog');        // ?? Analog FM in?
+  A3.mode('analog');        // ?? VOX
+  A4.mode('analog');        // ?? APC/TV
+  analogWrite(A4, 0, {soft:false});
+  A5.mode('analog');        // ?? MOD2_BIAS
+  analogWrite(A5, 0, {soft:false});
+  A6.mode('input_pullup');  // Keypad (K1)
+  A7.mode('output');        // Power switch override
+  A7.reset();
+  A8.mode('output');        // "SAVE"
+  A8.reset();
+  A9.mode('output');        // VCOVCC_SW
+  A9.reset();
+  A10.mode('output');       // DMR_SW
+  A10.reset();
+  //A11.mode('af_output');    // USB
+  //A12.mode('af_output');    // USB
+  A13.mode('output');       // Wide/Narrow FM switch
+  A13.reset();
+  A14.mode('output');       // MICPWR_SW
+  A14.reset();
+  A15.mode('af_output');    // AF6, I2S_FS
+
+  B0.mode('analog');        // RSSI
+  B1.mode('analog');        // ?? BUSY
+  B2.mode('output');        // ?? FM_SW
+  B2.reset();
+  //B3.mode('af_output');     // SPI1 (Flash) SCLK
+  //B4.mode('af_output');     // SPI1 (Flash) SDO
+  //B5.mode('af_output');     // SPI1 (Flash) SDI
+  SPI1.setup({sck:B3, miso:B4, mosi:B5, baud:84000000, mode:3});
+  //B6.mode('af_opendrain');  // I2C1 SCL
+  //B7.mode('af_opendrain');  // I2C1 SDA
+  I2C1.setup({scl:B6, sda:B7, bitrate:400000});
+  B8.mode('output');        // Speaker mute SPK_C
+  B8.set();
+  B9.mode('output');        // AF Amplifier AFCO
+  B9.reset();
+  B10.mode('input_pullup'); // Rotato ECN2
+  B11.mode('input_pullup'); // Rotato RCN3
+  B12.mode('output');       // ?? C5000 thing V_CS (Vocoder?)
+  B12.set();
+  //B13.mode('af_output');    // ?? C5000 thing V_SCLK (Vocoder?)
+  //B14.mode('af_output');    // ?? C5000 thing V_SDO (Vocoder?)
+  //B15.mode('af_output');    // ?? C5000 thing V_SDO (Vocoder?)
+  SPI2.setup({sck:B13, miso:B14, mosi:B15, baud:84000000, mode:3});
+
+  C0.mode('input');        // ?? TIME_SLOT_INTER
+  C1.mode('input');        // ?? SYS_INTER
+  C2.mode('input');        // ?? RF_TX_INTER
+  C3.mode('analog');       // ?? 2T/5T (And RF_RX_INTER -- not connected?)
+  C4.mode('output');       // RF Amplifier RF_APC_SW
+  C4.reset();
+  C5.mode('output');       // ?? 5TC seems to swith RF TX path
+  C5.reset();
+  C6.mode('output');       // LCD Backlight LAMP
+  //C6.reset();            // Don't touch, part of LCD library
+  C7.mode('opendrain');    // ?? CTC/DCS_OUT
+  C8.mode('output');       // Noise generator when AF amp is on PWM through LPF VOL_OUT ?? 2T/5T/DTMF_OUT output (beeps, and tones during transmit?)
+  C8.reset();
+  C9.mode('output');       // ?? 5RC Switches RX "stuff"?
+  C9.reset();
+  //C10.mode('af_output');   // ?? I2S_CK AF-6
+  //C11.mode('af_output');   // ?? I2S_RX AF 5
+  //C12.mode('af_output');   // ?? I2S_TX AF=6
+  // TODO: I2S?  Anyone?
+  SPI3.setup({sck:C10, miso:C11, mosi:C12, baud:84000000, mode:3});
+  C13.mode('output');      // BSHIFT - SPI for C5000 "user"
+  C13.reset();
+  C14.mode('input');       // ?? 32.768K_IN
+  C15.mode('input');       // ?? 32.768K_OUT
+
+  //D0.mode('af_output');    // LCD D2 - FSMC
+  //D1.mode('af_output');    // LCD D3 - FSMC
+  D2.mode('input');        // Keypad - K2
+  D3.mode('input');        // Keypad = K3
+  //D4.mode('af_output');    // LCD RD - FSMC
+  //D5.mode('af_output');    // LCD_WR - FSMC
+  D6.mode('output');       // LCD Chip Select (active low)
+  D6.set();
+  D7.mode('output');       // Flash CS0 (active low)
+  D7.set();
+  D8.mode('output');       // Flash CS1 (active low), nothing here?
+  D8.set();
+  D9.mode('output');       // Flash CS2 (active low), nothing here?
+  D9.set();
+  D10.mode('input');       // ?? PLL_LD - Lock detected on PLL chip
+  D11.mode('output');      // ?? PLL_CS - PLL chip select (active low)
+  D11.set();
+  //D12.mode('af_output');   // LCD_RS - FSMC
+  D13.mode('output');      // LCD Reset - LCD_RST
+  //D13.set();               // Leave it alone, part of LCD library
+  //D14.mode('af_output');   // LCD D0 - FSMC
+  //D15.mode('af_output');   // LCD D1 - FSMC
+
+  E0.mode('output');       // Green (RX) LED
+  E0.reset();
+  E1.mode('output');       // Red (TX) LED
+  E1.reset();
+  E2.mode('output');       // ?? DMR Chip Select - Active Low
+  E2.set();
+  E3.mode('input');        // ?? C5000 data input DMR_SCLK(Nope)/PLL_CLK(Nope)
+  E4.mode('output');       // ?? DMR_SDO -- no it isn't... seems to be PLL_CLK
+  E4.reset();
+  E5.mode('output');       // ?? DMR_SDI/PLL_DAT - this may actually be correct...
+  E5.reset();
+  E6.mode('output');       // ?? DMR_SLEEP
+  E6.reset();
+  //E7.mode('af_output');    // LCD D4 - FSMC
+  //E8.mode('af_output');    // LCD D5 - FSMC
+  //E9.mode('af_output');    // LCD D6 - FSMC
+  //E10.mode('af_output');   // LCD D6 - FSMC
+  E11.mode('input');       // PTT Key
+  E12.mode('input');       // External PTT Key
+  E13.mode('output');      // ?? FM_MUTE
+  E13.reset();
+  E14.mode('input');       // Rotato ECN0
+  E15.mode('input');       // Rotato ECN1
+}
+
 // const COLOR_BG = [ .45, .63, .90 ]; // Background
 // LCD.setColor.apply(LCD, COLOR_BG);
 // LCD.fillRect(0, 0, 159, 114);
