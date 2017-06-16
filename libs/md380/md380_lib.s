@@ -4,7 +4,7 @@
 .balign 1
 
 _md380_lib_js_start:
-.incbin "md380_lib.js"
+.incbin "md380_lib.min.js"
 
 .global _md380_lib_js_size
 .type _md380_lib_js_size, %object

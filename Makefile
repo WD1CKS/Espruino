@@ -719,7 +719,10 @@ endif
 
 all: 	 proj
 
-libs/md380/md380_lib.o: libs/md380/md380_lib.js libs/md380/md380_lib.s
+%.min.js: %.js
+	python -m jsmin $< > $@
+
+libs/md380/md380_lib.o: libs/md380/md380_lib.min.js libs/md380/md380_lib.s
 
 boardjson: scripts/build_board_json.py $(WRAPPERSOURCES)
 	@echo Generating Board JSON
