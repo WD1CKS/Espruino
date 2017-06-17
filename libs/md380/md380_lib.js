@@ -351,12 +351,14 @@ function set_vco(freq, high_res) {
 	}
 
 	// Wait for PLL lock...
-	for (j=0; j<10; j++) {
+	for (j=0; j<200; j++) {
 		if (D10.read())
 			break;
 	}
-	if (j === 10)
+	if (j === 200) {
+		console.log("Timed out waiting for lock");
 		return false;
+	}
 
 	if (high_res)
 		last_vco_freq = (((dividend / 262144) + 32 + divider)*osc/Mdiv);
