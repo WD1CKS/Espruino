@@ -357,6 +357,8 @@ function set_vco(freq, high_res) {
 	}
 	if (j === 200) {
 		console.log("Timed out waiting for lock");
+		if (freq != last_vco_freq)
+			set_freq(last_vco_freq);
 		return false;
 	}
 
