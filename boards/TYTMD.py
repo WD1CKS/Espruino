@@ -34,6 +34,7 @@ info = {
    ],
    'makefile' : [
      'DEFINES+=-DUSE_USB_OTG_FS=1 -DSTM32F40_41xxx -DUSB_NO_VBUS_SENSE',
+     'DEFINES+=-DFSMC_BITBANG # software implementation because FSMC HW causes strange behaviour',
      'STLIB=STM32F405xx',
      'PRECOMPILED_OBJS+=$(ROOT)/targetlibs/stm32f4/lib/startup_stm32f40xx.o'
    ]

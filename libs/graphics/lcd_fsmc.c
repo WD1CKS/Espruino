@@ -23,9 +23,13 @@
 const unsigned int DELAY_SHORT = 10;
 
 
-void LCD_DELAY(__IO uint32_t nCount) {
+void _LCD_DELAY(__IO uint32_t nCount) {
   for(; nCount != 0; nCount--) ;//n++;
 }
+#define LCD_DELAY(x) do { \
+  if(x)                   \
+    _LCD_DELAY(x);        \
+} while(0)
 
 static inline void delay_ms(__IO uint32_t mSec) {
   jshDelayMicroseconds(mSec*1000);
@@ -145,27 +149,12 @@ void LCD_init_hardware() {
 
 // bitbanged FSMC - because for some reason normal one seems unreliable on HYSTM32_32
 // Nasty, slow, but easy to write + test
-/*#define LCD_FSMC_RS JSH_PORTD_OFFSET+11
-#define LCD_FSMC_RD JSH_PORTD_OFFSET+4
-#define LCD_FSMC_WR JSH_PORTD_OFFSET+5
-#define LCD_FSMC_CS JSH_PORTD_OFFSET+7
-#define LCD_FSMC_D0 JSH_PORTD_OFFSET+14
-#define LCD_FSMC_D1 JSH_PORTD_OFFSET+15
-#define LCD_FSMC_D2 JSH_PORTD_OFFSET+0
-#define LCD_FSMC_D3 JSH_PORTD_OFFSET+1
-#define LCD_FSMC_D4 JSH_PORTE_OFFSET+7
-#define LCD_FSMC_D5 JSH_PORTE_OFFSET+8
-#define LCD_FSMC_D6 JSH_PORTE_OFFSET+9
-#define LCD_FSMC_D7 JSH_PORTE_OFFSET+10
-#define LCD_FSMC_D8 JSH_PORTE_OFFSET+11
-#define LCD_FSMC_D9 JSH_PORTE_OFFSET+12
-#define LCD_FSMC_D10 JSH_PORTE_OFFSET+13
-#define LCD_FSMC_D11 JSH_PORTE_OFFSET+14
-#define LCD_FSMC_D12 JSH_PORTE_OFFSET+15
-#define LCD_FSMC_D13 JSH_PORTD_OFFSET+8
-#define LCD_FSMC_D14 JSH_PORTD_OFFSET+9
-#define LCD_FSMC_D15 JSH_PORTD_OFFSET+10*/
 
+#define CLK_LOW_TIME	0
+#define CLK_HIGH_TIME	0
+#define RD_CLK_LOW_TIME		50
+#define RD_CLK_HIGH_TIME	50
+#define CS_DELAY_TIME	0
 
 static void _LCD_WR(unsigned int d) {
   jshPinSetValue(LCD_FSMC_D0 , ((d>>0 )&1)!=0);
@@ -176,6 +165,7 @@ static void _LCD_WR(unsigned int d) {
   jshPinSetValue(LCD_FSMC_D5 , ((d>>5 )&1)!=0);
   jshPinSetValue(LCD_FSMC_D6 , ((d>>6 )&1)!=0);
   jshPinSetValue(LCD_FSMC_D7 , ((d>>7 )&1)!=0);
+#ifdef LCD_FSMC_D8
   jshPinSetValue(LCD_FSMC_D8 , ((d>>8 )&1)!=0);
   jshPinSetValue(LCD_FSMC_D9 , ((d>>9 )&1)!=0);
   jshPinSetValue(LCD_FSMC_D10, ((d>>10)&1)!=0);
@@ -184,6 +174,7 @@ static void _LCD_WR(unsigned int d) {
   jshPinSetValue(LCD_FSMC_D13, ((d>>13)&1)!=0);
   jshPinSetValue(LCD_FSMC_D14, ((d>>14)&1)!=0);
   jshPinSetValue(LCD_FSMC_D15, ((d>>15)&1)!=0);
+#endif
 }
 
 static unsigned int _LCD_RD() {
@@ -196,6 +187,7 @@ static unsigned int _LCD_RD() {
   if (jshPinGetValue(LCD_FSMC_D5 )) d|=1<<5 ;
   if (jshPinGetValue(LCD_FSMC_D6 )) d|=1<<6 ;
   if (jshPinGetValue(LCD_FSMC_D7 )) d|=1<<7 ;
+#ifdef LCD_FSMC_D8
   if (jshPinGetValue(LCD_FSMC_D8 )) d|=1<<8 ;
   if (jshPinGetValue(LCD_FSMC_D9 )) d|=1<<9 ;
   if (jshPinGetValue(LCD_FSMC_D10)) d|=1<<10;
@@ -204,6 +196,7 @@ static unsigned int _LCD_RD() {
   if (jshPinGetValue(LCD_FSMC_D13)) d|=1<<13;
   if (jshPinGetValue(LCD_FSMC_D14)) d|=1<<14;
   if (jshPinGetValue(LCD_FSMC_D15)) d|=1<<15;
+#endif
   return d;
 }
 
@@ -216,6 +209,7 @@ static void _LCD_STATE(JshPinState state) {
   jshPinSetState(LCD_FSMC_D5 , state);
   jshPinSetState(LCD_FSMC_D6 , state);
   jshPinSetState(LCD_FSMC_D7 , state);
+#ifdef LCD_FSMC_D8
   jshPinSetState(LCD_FSMC_D8 , state);
   jshPinSetState(LCD_FSMC_D9 , state);
   jshPinSetState(LCD_FSMC_D10, state);
@@ -224,57 +218,168 @@ static void _LCD_STATE(JshPinState state) {
   jshPinSetState(LCD_FSMC_D13, state);
   jshPinSetState(LCD_FSMC_D14, state);
   jshPinSetState(LCD_FSMC_D15, state);
+#endif
 }
 
 static inline void LCD_WR_REG(unsigned int index) {
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 0);
+#endif
+  jshPinSetValue(LCD_FSMC_RD, 1);
   jshPinSetValue(LCD_FSMC_RS, 0);
   _LCD_WR(index);
   jshPinSetValue(LCD_FSMC_WR, 0);
+  LCD_DELAY(CLK_LOW_TIME);
   jshPinSetValue(LCD_FSMC_WR, 1);
+  LCD_DELAY(CLK_HIGH_TIME);
+  jshPinSetValue(LCD_FSMC_RD, 0);
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 1);
+#endif
 }
 
 static inline uint16_t LCD_RD_Data(void) {
   _LCD_STATE(JSHPINSTATE_GPIO_IN);
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 0);
+#endif
   jshPinSetValue(LCD_FSMC_RS, 1);
   jshPinSetValue(LCD_FSMC_RD, 0);
+  LCD_DELAY(RD_CLK_LOW_TIME);
   uint16_t temp = (uint16_t)_LCD_RD();
   jshPinSetValue(LCD_FSMC_RD, 1);
+  LCD_DELAY(RD_CLK_HIGH_TIME);
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 1);
+#endif
   _LCD_STATE(JSHPINSTATE_GPIO_OUT);
 
   return temp;
 }
 
 static inline void LCD_WR_Data(unsigned int val) {
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 0);
-  jshPinSetValue(LCD_FSMC_RS, 1);
-  _LCD_WR(val);
-  jshPinSetValue(LCD_FSMC_WR, 0);
-  jshPinSetValue(LCD_FSMC_WR, 1);
+#endif
+  jshPinSetValue(LCD_FSMC_RD, 1);	// This is a write
+  jshPinSetValue(LCD_FSMC_RS, 1);	// This is a parameter write
+  _LCD_WR(val);				// Flip bits
+  jshPinSetValue(LCD_FSMC_WR, 0);	// Lower Clock
+  LCD_DELAY(CLK_LOW_TIME);		// Wait for it...
+  jshPinSetValue(LCD_FSMC_WR, 1);	// Raise Clock, transfer occurs now
+  LCD_DELAY(CLK_HIGH_TIME);		// Wait for it...
+  jshPinSetValue(LCD_FSMC_RD, 0);	// Not writing anymore
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 1);
+#endif
 }
 
 static inline void LCD_WR_Data_multi(unsigned int val, unsigned int count) {
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 0);
+#endif
+  jshPinSetValue(LCD_FSMC_RD, 1);
   jshPinSetValue(LCD_FSMC_RS, 1);
+#ifdef LCD_FSMC_D8
   _LCD_WR(val);
+#endif
   unsigned int i;
   for (i=0;i<count;i++) {
+#ifndef LCD_FSMC_D8
+    _LCD_WR((val >> 8)&0xff);
+#endif
     jshPinSetValue(LCD_FSMC_WR, 0);
+    LCD_DELAY(CLK_LOW_TIME);
     jshPinSetValue(LCD_FSMC_WR, 1);
+    LCD_DELAY(CLK_HIGH_TIME);
+#ifndef LCD_FSMC_D8
+    _LCD_WR(val&0xff);
+    jshPinSetValue(LCD_FSMC_WR, 0);
+    LCD_DELAY(CLK_LOW_TIME);
+    jshPinSetValue(LCD_FSMC_WR, 1);
+    LCD_DELAY(CLK_HIGH_TIME);
+#endif
   }
+  jshPinSetValue(LCD_FSMC_RD, 0);
+#ifndef TYTMD
   jshPinSetValue(LCD_FSMC_CS, 1);
+#endif
 }
 
+#ifdef TYTMD
+
+void LCD_init_pins(bool read)
+{
+  GPIO_InitTypeDef GPIO_InitStructure;
+
+  /* Enable the FSMC pins for LCD control */
+  if (read) {
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+    GPIO_InitStructure.GPIO_Pin = 
+        GPIO_Pin_0 /* D2 */ | GPIO_Pin_1 /* D3 */ |
+        GPIO_Pin_14 /* D0 */ |  GPIO_Pin_15 /* D1 */;
+    GPIO_Init(GPIOD, &GPIO_InitStructure);
+
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 /* D4 */ | GPIO_Pin_8 /* D5 */ | GPIO_Pin_9 /* D6 */ | GPIO_Pin_10 /* D7 */;
+    GPIO_Init(GPIOE, &GPIO_InitStructure);
+  }
+
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  if (read) {
+    GPIO_InitStructure.GPIO_Pin = 
+        GPIO_Pin_2 /* (K2) */ | GPIO_Pin_3 /* (K3) */ | GPIO_Pin_4 /* NOE (RD) */ | 
+        GPIO_Pin_5 /* NWE (WR) */ | GPIO_Pin_6 /* (CS) */ | GPIO_Pin_13 /* (RST) */ | 
+        GPIO_Pin_12 /* A17 (RS) */;
+    GPIO_Init(GPIOD, &GPIO_InitStructure);
+  }
+  else {
+    GPIO_InitStructure.GPIO_Pin = 
+        GPIO_Pin_0 /* D2 */ | GPIO_Pin_1 /* D3 */ | GPIO_Pin_2 /* (K2) */ | 
+        GPIO_Pin_3 /* (K3) */ | GPIO_Pin_4 /* NOE (RD) */ | GPIO_Pin_5 /* NWE (WR) */ | 
+        GPIO_Pin_6 /* (CS) */ | GPIO_Pin_13 /* (RST) */ | GPIO_Pin_14 /* D0 */ | 
+        GPIO_Pin_15 /* D1 */ | GPIO_Pin_12 /* A17 (RS) */;
+    GPIO_Init(GPIOD, &GPIO_InitStructure);
+  }
+
+  if (!read) {
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 /* D4 */ | GPIO_Pin_8 /* D5 */ | GPIO_Pin_9 /* D6 */ | GPIO_Pin_10 /* D7 */;
+    GPIO_Init(GPIOE, &GPIO_InitStructure);
+  }
+
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 /* (K1) */;
+  GPIO_Init(GPIOA, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOA, GPIO_Pin_6);
+  GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
+
+  jshPinSetValue(LCD_FSMC_CS, 0);
+  LCD_DELAY(CS_DELAY_TIME);
+  if (read)
+	jshDelayMicroseconds(1);
+}
+
+void LCD_clear_pins(bool read)
+{
+  LCD_DELAY(CS_DELAY_TIME);
+  jshPinSetValue(LCD_FSMC_CS, 1);
+}
+#endif
+
 void LCD_init_hardware() {
+#ifdef TYTMD
+  LCD_init_pins(false);
+#else
   jshPinSetState(LCD_FSMC_RS , JSHPINSTATE_GPIO_OUT);
   jshPinSetState(LCD_FSMC_RD , JSHPINSTATE_GPIO_OUT);
   jshPinSetState(LCD_FSMC_WR , JSHPINSTATE_GPIO_OUT);
   jshPinSetState(LCD_FSMC_CS , JSHPINSTATE_GPIO_OUT);
   _LCD_STATE(JSHPINSTATE_GPIO_OUT);
+#endif
 
 #ifdef LCD_BL
   jshPinSetState(LCD_BL, JSHPINSTATE_GPIO_OUT);
@@ -291,7 +396,6 @@ void LCD_init_hardware() {
   jshPinSetValue(LCD_RESET, 1); //RESET=1
 #endif
 }
-
 
 #else
 
@@ -355,8 +459,8 @@ void LCD_init_pins(bool read)
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
-                          GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_12/*RS*/;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 /* D2 */ | GPIO_Pin_1 /* D3 */ | GPIO_Pin_4 /* NOE (RD) */ | GPIO_Pin_5 /* NWE (WR) */ |
+                          GPIO_Pin_14 /* D0 */ | GPIO_Pin_15 /* D1 */ | GPIO_Pin_12 /* A17 (RS) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource0, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource1, GPIO_AF_FSMC);
@@ -366,7 +470,7 @@ void LCD_init_pins(bool read)
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource15, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource12, GPIO_AF_FSMC);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 /* D4 */ | GPIO_Pin_8 /* D5 */ | GPIO_Pin_9 /* D6 */ | GPIO_Pin_10 /* D7 */;
   GPIO_Init(GPIOE, &GPIO_InitStructure);
   GPIO_PinAFConfig(GPIOE, GPIO_PinSource7, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOE, GPIO_PinSource8, GPIO_AF_FSMC);
@@ -374,21 +478,21 @@ void LCD_init_pins(bool read)
   GPIO_PinAFConfig(GPIOE, GPIO_PinSource10, GPIO_AF_FSMC);
 
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_13;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 /* (CS) */ | GPIO_Pin_13 /* (RST) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 /* (K1) */;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
   GPIO_ResetBits(GPIOA, GPIO_Pin_6);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 /* (K2) */ | GPIO_Pin_3 /* (K3) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
   GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
 
   if (read) {
     FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
       (uint32_t)/* FSMC_AddressSetupTime */ 3 |
-      (/* FSMC_AddressHoldTime */ 11 << 4 )|
+      (/* FSMC_AddressHoldTime */ 0 << 4 )|
       (/* FSMC_DataSetupTime */ 100 << 8) |
       (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
       (/* FSMC_CLKDivision */ 0 << 20) |
@@ -407,7 +511,7 @@ void LCD_clear_pins(bool read)
   if (read) {
     FSMC_Bank1->BTCR[FSMC_Bank1_NORSRAM1+1] =
       (uint32_t)/* FSMC_AddressSetupTime */ 3 |
-      (/* FSMC_AddressHoldTime */ 3 << 4 )|
+      (/* FSMC_AddressHoldTime */ 0 << 4 )|
       (/* FSMC_DataSetupTime */ 4 << 8) |
       (/* FSMC_BusTurnAroundDuration */ 0 << 16) |
       (/* FSMC_CLKDivision */ 0 << 20) |
@@ -438,7 +542,9 @@ void LCD_init_hardware() {
 #endif
 
   /* Enable the FSMC pins for LCD control */
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+#ifdef TYTMD
+  LCD_init_pins(false);
+#else
 #ifdef STM32F4
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
 #else
@@ -446,6 +552,7 @@ void LCD_init_hardware() {
 #endif
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 #ifdef LCD_FSMC_D8
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
                           GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10 | GPIO_Pin_14 |
@@ -456,9 +563,8 @@ void LCD_init_hardware() {
                           GPIO_Pin_15;
   GPIO_Init(GPIOE, &GPIO_InitStructure);
 #else
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_4 | GPIO_Pin_5 |
-                          GPIO_Pin_14 | GPIO_Pin_15 | GPIO_Pin_12/*RS*/;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 /* D2 */ | GPIO_Pin_1 /* D3 */ | GPIO_Pin_4 /* NOE (RD) */ | GPIO_Pin_5 /* NWE (WR) */ |
+                          GPIO_Pin_14 /* D0 */ | GPIO_Pin_15 /* D1 */ | GPIO_Pin_12 /* A17 (RS) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource0, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource1, GPIO_AF_FSMC);
@@ -468,7 +574,7 @@ void LCD_init_hardware() {
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource15, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOD, GPIO_PinSource12, GPIO_AF_FSMC);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9 | GPIO_Pin_10;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7 /* D4 */ | GPIO_Pin_8 /* D5 */ | GPIO_Pin_9 /* D6 */ | GPIO_Pin_10 /* D7 */;
   GPIO_Init(GPIOE, &GPIO_InitStructure);
   GPIO_PinAFConfig(GPIOE, GPIO_PinSource7, GPIO_AF_FSMC);
   GPIO_PinAFConfig(GPIOE, GPIO_PinSource8, GPIO_AF_FSMC);
@@ -478,26 +584,27 @@ void LCD_init_hardware() {
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_13;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 /* (CS) */ | GPIO_Pin_13 /* (RST) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 /* (K1) */;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
   GPIO_ResetBits(GPIOA, GPIO_Pin_6);
 
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 /* (K2) */ | GPIO_Pin_3 /* (K3) */;
   GPIO_Init(GPIOD, &GPIO_InitStructure);
   GPIO_ResetBits(GPIOD, GPIO_Pin_2 | GPIO_Pin_3);
 
   jshPinSetState(LCD_FSMC_CS, JSHPINSTATE_GPIO_OUT);
   jshPinSetValue(LCD_FSMC_CS, 0);
 #endif
+#endif
 
   FSMC_NORSRAMInitTypeDef  FSMC_NORSRAMInitStructure;
   FSMC_NORSRAMStructInit(&FSMC_NORSRAMInitStructure);
   FSMC_NORSRAMTimingInitTypeDef  p;
   p.FSMC_AddressSetupTime = 3;		// Not with Synchronous
-  p.FSMC_AddressHoldTime = 3;		// Not with Synchronous
+  p.FSMC_AddressHoldTime = 0;		// Not with Synchronous
   p.FSMC_DataSetupTime = 4;		// Only with async multiplexed
   p.FSMC_BusTurnAroundDuration = 0;	// Only with async multiplexed
   p.FSMC_CLKDivision = 0;		// Not with Asynchronous
@@ -506,11 +613,7 @@ void LCD_init_hardware() {
 
   FSMC_NORSRAMInitStructure.FSMC_MemoryType = FSMC_MemoryType_NOR;
   FSMC_NORSRAMInitStructure.FSMC_Bank = FSMC_Bank1_NORSRAM1;
-#ifdef TYTMD
-  FSMC_NORSRAMInitStructure.FSMC_DataAddressMux = FSMC_DataAddressMux_Enable;
-#else
   FSMC_NORSRAMInitStructure.FSMC_DataAddressMux = FSMC_DataAddressMux_Disable;
-#endif
   FSMC_NORSRAMInitStructure.FSMC_MemoryDataWidth = FSMC_MemoryDataWidth_16b;
   FSMC_NORSRAMInitStructure.FSMC_BurstAccessMode = FSMC_BurstAccessMode_Disable;
   FSMC_NORSRAMInitStructure.FSMC_WaitSignalPolarity = FSMC_WaitSignalPolarity_Low;
@@ -583,19 +686,18 @@ void LCD_init_panel() {
   jshPinSetValue(JSH_PORTD_OFFSET + 7, 1);
   LCD_Code = LCD_TYTMD;
   LCD_WR_CMD(0x3a, 0x05);
-  LCD_WR_REG(0x36);
   switch(lcd_type & 3) {
   case 0x00:	/* ??? */
-    LCD_WR_Data(0xa0);
+    LCD_WR_CMD(0x36, 0xa0);
     break;
   case 0x01:	/* MD-390 */
-    LCD_WR_Data(0x60);
+    LCD_WR_CMD(0x36, 0x60);
     break;
   case 0x02:	/* ??? */
-    LCD_WR_Data(0xa8);
+    LCD_WR_CMD(0x36, 0xa8);
     break;
   case 0x03:	/* MD-380 */
-    LCD_WR_Data(0xa7);
+    LCD_WR_CMD(0x36, 0xa7);
     break;
   }
   LCD_WR_CMD(0xb4, 0x00);
