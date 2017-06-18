@@ -149,6 +149,9 @@ md380.prototype.cs_5000_write = function (reg, val) {
 	c5.send([0x00, reg, val], E2);
 };
 
+var curr_mode=undefined;
+// 1 = FM Analog RX
+
 md380.prototype.init_pins = function() {
 	A0.mode('analog');			// Volume pot input (Labeled as "TX_LED")
 	A1.mode('analog');			// Main battery level, divided by three
@@ -270,6 +273,7 @@ md380.prototype.init_pins = function() {
 	E13.reset();
 	E14.mode('input');			// Rotato ECN0
 	E15.mode('input');			// Rotato ECN1
+	curr_mode = undefined;
 };
 
 md380.prototype.fm_mode = function(freq) {
@@ -281,16 +285,16 @@ md380.prototype.fm_mode = function(freq) {
 	C7.set();
 	C9.set();
 	if (freq !== undefined) {
-		if (!this.set_freq(freq))
+		if (!this.set_freq(freq)) {
+			this.init_pins();
 			return false;
+		}
 	}
-	B8.reset();
-	B9.set();
-	E13.set();
+	curr_mode = 1;
 	return true;
 };
 
-var last_vco_freq = 0;
+var last_vco_freq = undefined;
 function set_vco(freq, high_res) {
 	const osc = 16.8;
 	var Mdiv;
@@ -358,7 +362,9 @@ function set_vco(freq, high_res) {
 	if (j === 200) {
 		console.log("Timed out waiting for lock");
 		if (freq != last_vco_freq)
-			set_freq(last_vco_freq);
+			set_vco(last_vco_freq);
+		else
+			last_vco_freq = undefined;
 		return false;
 	}
 
@@ -370,7 +376,7 @@ function set_vco(freq, high_res) {
 	return last_vco_freq;
 }
 
-var last_set_freq = 0;
+var last_set_freq = undefined;
 md380.prototype.set_freq = function(freq, high) {
 	var ret;
 
@@ -381,8 +387,10 @@ md380.prototype.set_freq = function(freq, high) {
 	if (freq < 400 || freq > 480)
 		return false;
 	ret = set_vco(freq-49.9415, high);
-	if (ret === false)
+	if (ret === false) {
+		last_set_freq = undefined;
 		return false;
+	}
 	last_set_freq = ret+49.9415;
 	return true;
 };
@@ -391,16 +399,36 @@ md380.prototype.get_freq = function() {
 	return last_set_freq;
 };
 
+md380.prototype.fm_audio = function(on)
+{
+	if (on) {
+		B9.set();
+		B8.reset();
+		E13.set();
+	}
+	else {
+		E13.reset();
+		B9.reset();
+		B8.set();
+	}
+}
+
 md380.prototype.scan = function(start, end, step, squelch) {
 	// TODO: Handle VHF radios as well
 	if (start === undefined)
+		start = last_set_freq;
+	if (start === undefined)
 		start = 400;
-	if (end === undefined)
-		end = 480;
 	if (step === undefined)
 		step = 0.0125;
+	if (end === undefined) {
+		if (step < 0)
+			end = 400;
+		else
+			end = 480;
+	}
 	if (squelch === undefined)
-		squelch = 0.4;
+		squelch = 0.35;
 
 	if (step == 0)
 		return false;
@@ -415,11 +443,19 @@ md380.prototype.scan = function(start, end, step, squelch) {
 	var rssi;
 
 	this.fm_mode(freq);
+	/* Mute audio */
+	this.fm_audio(false);
 	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
 		if (this.set_freq(freq)) {
 			rssi = analogRead(B0);
-			if (rssi > squelch)
+			if (rssi > squelch) {
+				/* Listen to that audio right there! */
+				this.fm_audio(true);
+				B9.set();
+				B8.reset();
+				E13.set();
 				return last_set_freq;
+			}
 			freq += step;
 		}
 		else
