@@ -355,11 +355,11 @@ function set_vco(freq, high_res) {
 	}
 
 	// Wait for PLL lock...
-	for (j=0; j<200; j++) {
+	for (j=0; j<500; j++) {
 		if (D10.read())
 			break;
 	}
-	if (j === 200) {
+	if (j === 500) {
 		console.log("Timed out waiting for lock");
 		if (freq != last_vco_freq)
 			set_vco(last_vco_freq);
@@ -442,7 +442,8 @@ md380.prototype.scan = function(start, end, step, squelch) {
 	var freq = start;
 	var rssi;
 
-	this.fm_mode(freq);
+	if (curr_mode != 1)
+		this.fm_mode(freq);
 	/* Mute audio */
 	this.fm_audio(false);
 	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
