@@ -299,7 +299,8 @@ md380.prototype.init_pins = function() {
 	A4.mode('analog');			// ?? APC/TV
 	analogWrite(A4, 0.5, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
-	analogWrite(A5, 0, {soft:false});
+	/* TODO: Appears to come from freq_adjust_* in calibration data */
+	analogWrite(A5, 98/256, {soft:false});
 	A6.mode('input_pullup');		// Keypad (K1)
 	A7.mode('output');			// Power switch override
 	A7.reset();
@@ -525,12 +526,12 @@ md380.prototype.set_freq = function(freq, high) {
 	// TODO: Handle VHF radios as well
 	if (freq < 400 || freq > 480)
 		return false;
-	ret = set_vco(freq-49.9415, high);
+	ret = set_vco(freq-49.95, high);
 	if (ret === false) {
 		last_set_freq = undefined;
 		return false;
 	}
-	last_set_freq = ret+49.9415;
+	last_set_freq = ret+49.95;
 	return true;
 };
 
