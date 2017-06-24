@@ -128,14 +128,27 @@ md380.prototype.StatusBar = function () {
 
 var SB;
 var pc = 0;
+var squelch_value = 0.4;
 md380.prototype.pollFunc = function() {
 	TYTKeyPad.poll();
 	if (SB===undefined) {
-		SB = new this.StatusBar();
+		SB = md380.prototype.StatusBar();
 		SB.draw_static();
 	}
-	SB.update_rssi((analogRead(B0)-.2)*3);
-	if (pc % 25 == 0) {
+	var rssi = analogRead(B0);
+	if (curr_mode === 1) {
+		if (rssi >= squelch_value) {
+			md380.prototype.fm_audio(true);
+			E0.set();
+		}
+		else {
+			md380.prototype.fm_audio(false);
+			E0.reset();
+		}
+	}
+
+	SB.update_rssi((rssi-.2)*3);
+	if (pc % 12 == 0) {
 		SB.update_battery(analogRead(A1)/0.85);
 		var vol = analogRead(A0)*65535;
 		if (vol < 5000)
@@ -150,9 +163,11 @@ md380.prototype.pollFunc = function() {
 		vol /= 10;
 		SB.update_volume(vol);
 		pc = 0;
+		var rotato = TYTRotato;
+		squelch_value = rotato*(1/20);
 	}
 	pc++;
-}
+};
 
 var instr;
 md380.prototype.keyHandler = function(key) {
@@ -261,7 +276,7 @@ md380.prototype.keyHandler = function(key) {
 		A7.reset();
 		break;
 	}
-}
+};
 
 md380.prototype.ReadSecurity = function (addr) {
 	var ret;
@@ -514,7 +529,7 @@ function set_vco(freq, high_res) {
 		last_vco_freq = (((dividend / 1024) + 32 + divider)*osc/Mdiv);
 
 	return last_vco_freq;
-}
+};
 
 var last_set_freq = undefined;
 md380.prototype.set_freq = function(freq, high) {
@@ -551,7 +566,7 @@ md380.prototype.fm_audio = function(on)
 		B9.reset();
 		B8.set();
 	}
-}
+};
 
 md380.prototype.scan = function(start, end, step, squelch, cb) {
 	// TODO: Handle VHF radios as well
@@ -568,7 +583,7 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 			end = 480;
 	}
 	if (squelch === undefined)
-		squelch = 0.4;
+		squelch = squelch_value;
 
 	if (step == 0)
 		return false;
@@ -607,6 +622,19 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 	return false;
 };
 
+md380.prototype.set_squelch = function(sval) {
+	if (sval === undefined)
+		sval = 0.4;
+	if (sval < 0 || sval >= 1)
+		sval = 0.4;
+
+	squelch_value = sval;
+};
+
+md380.prototype.get_squelch = function() {
+	return squelch_value;
+};
+
 // LCD.setColor.apply(LCD, COLOR_BG);
 // LCD.fillRect(0, 0, 159, 114);
 // var md = require('md380').get();
@@ -627,4 +655,4 @@ exports.get = function () {
 	setInterval(ret.pollFunc, 20);
 	TYTKeyPad.on('keyPress', ret.keyHandler);
 	return new md380();
-}
+};
