@@ -312,6 +312,7 @@ md380.prototype.init_pins = function() {
 	A2.mode('analog');			// ?? Analog FM in?
 	A3.mode('analog');			// ?? VOX
 	A4.mode('analog');			// ?? APC/TV
+	/* TODO: Adjust sensitivity somehow... maybe tied to rx_sensitivity calibration setting? */
 	analogWrite(A4, 0.5, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
 	/* TODO: Appears to come from freq_adjust_* in calibration data */
