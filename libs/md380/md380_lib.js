@@ -316,7 +316,7 @@ md380.prototype.init_pins = function() {
 	analogWrite(A4, 0.5, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
 	/* TODO: Appears to come from freq_adjust_* in calibration data */
-	analogWrite(A5, 98/256, {soft:false});
+	analogWrite(A5, 98/0xfff, {soft:false});
 	A6.mode('input_pullup');		// Keypad (K1)
 	A7.mode('output');			// Power switch override
 	A7.reset();
