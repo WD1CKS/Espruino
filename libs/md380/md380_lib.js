@@ -297,7 +297,7 @@ md380.prototype.init_pins = function() {
 	A2.mode('analog');			// ?? Analog FM in?
 	A3.mode('analog');			// ?? VOX
 	A4.mode('analog');			// ?? APC/TV
-	analogWrite(A4, 0, {soft:false});
+	analogWrite(A4, 0.5, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
 	analogWrite(A5, 0, {soft:false});
 	A6.mode('input_pullup');		// Keypad (K1)
