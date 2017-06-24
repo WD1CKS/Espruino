@@ -134,7 +134,7 @@ md380.prototype.pollFunc = function() {
 		SB = new this.StatusBar();
 		SB.draw_static();
 	}
-	SB.update_rssi(analogRead(B0)*2.5);
+	SB.update_rssi((analogRead(B0)-.2)*3);
 	if (pc % 25 == 0) {
 		SB.update_battery(analogRead(A1)/0.85);
 		var vol = analogRead(A0)*65535;
@@ -567,7 +567,7 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 			end = 480;
 	}
 	if (squelch === undefined)
-		squelch = 0.35;
+		squelch = 0.4;
 
 	if (step == 0)
 		return false;
