@@ -1,6 +1,8 @@
 //var font_cp437_8x8 = atob("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");
 //var width_cp437_8x8 = atob("BQgICAgICAUIBwgIBwgICAgIBwUICAcIBgYICAcICAgFBAUHBwcIAwQECAYDBwIHBwYHBwgHBwcHBwIDBQcFBwcHBwcHBwcHBwQHBwcHBwcHBwcHBwcHBwcHBwUIBQgIAwcHBwcHBgcHBAcHBAcHBwcHBwcHBwcHBgcGBgIGBwcHBwcHBwcHBwcHBwUIBQcHBgcHBwcHBwcHBwcHBwYICAcEBwcHBwcGBwcHCAgCBwcICAgCBQUHBwUHBAcHBwUFBQgIBQgIBQUFBQgIBQgICAgICAUFBQUICAUFCAgFBAgHBwcHBwcIBwYHBwcICAUHBwYHBwUFBwcFAwMIBgUFBQUICAgICAgFCAcICAcICAgICAcHCAgHCAcHCAgICAgIBQUGCAcICAQFBQgHBAcDCAgHBwcIBwcHBwcDBAYHBgcIBwgICAgICAcFCAgICAgICAcIBwcHBwgIBwgFCAUICAQICAcIBwcICAUHCAUIBwcICAgHBggHCAgHBwcDBwgIBwgHCAgICAcIBwcHCAYIBwcICAcHBwgIBwgHCAgHCAgIBQcIBwcHBgcHBwgIAwgICAgIAwYGCAgGCAYICAgGBgUICAUICAUGBgYICAYICAgICAgGBQUGCAgGBQgIBQQICAcHCAcICAgHCAgHCAgGBwcHBwcFBgcIBgMDCAYFBQU=");
 
+const COLOR_BG = [ .45, .63, .90 ]; // Background
+
 function clamp(min, max, val) {
 	return (val >= min && val <= max ? val : (val < min ? min : max));
 }
@@ -122,6 +124,143 @@ md380.prototype.StatusBar = function () {
 		}
 	}
 
+}
+
+var SB;
+var pc = 0;
+md380.prototype.pollFunc = function() {
+	TYTKeyPad.poll();
+	if (SB===undefined) {
+		SB = new this.StatusBar();
+		SB.draw_static();
+	}
+	SB.update_rssi(analogRead(B0)*2.5);
+	if (pc % 25 == 0) {
+		SB.update_battery(analogRead(A1)/0.85);
+		var vol = analogRead(A0)*65535;
+		if (vol < 5000)
+			vol = (vol/1000+1);
+		else {
+			vol -= 5000;
+			vol /= 6750;
+			vol += 6;
+			if (vol > 10)
+				vol = 10;
+		}
+		vol /= 10;
+		SB.update_volume(vol);
+		pc = 0;
+	}
+	pc++;
+}
+
+var instr;
+md380.prototype.keyHandler = function(key) {
+	var i;
+
+	LCD.setFontVector(30);
+
+	function freq_str(freq) {
+		LCD.setColor.apply(LCD, COLOR_BG);
+		LCD.fillRect(10, 20, 159, 60);
+		LCD.setColor(0,0,0);
+		LCD.drawString(freq,10,20);
+	}
+
+	function update_freq() {
+		instr = md380.prototype.get_freq().toString();
+		if (instr.length == 3)
+			instr += '.';
+		instr = (instr+"000").substr(0, 7);
+		freq_str(instr);
+		instr = undefined;
+	}
+
+	switch(key) {
+	case '0':
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		if (instr == undefined)
+			instr = '4';
+		if (instr.length == 3)
+			instr += '.';
+		instr += key;
+		if (instr.length == 7) {
+			md380.prototype.set_freq(parseFloat(instr));
+			update_freq();
+			instr = undefined;
+		}
+		else {
+			freq_str((instr+"_     ").substr(0, 7));
+		}
+		break;
+	case 'G':
+		if (instr !== undefined) {
+			while(instr.length < 7) {
+				if (instr.length == 3)
+					instr += '.';
+				instr += '0';
+			}
+			if (instr.length == 7) {
+				md380.prototype.set_freq(parseFloat(instr));
+				instr = undefined;
+			}
+			update_freq();
+		}
+		break;
+	case 'T':
+		md380.prototype.fm_audio(true);
+		break;
+	case 'B':
+		md380.prototype.fm_audio(false);
+		break;
+	case 'U':
+		i = md380.prototype.get_freq()+0.025;
+		if (i > 480)
+			i = 400;
+		i = Math.round(i*40)/40;
+		md380.prototype.set_freq(i);
+		update_freq();
+		break;
+	case 'D':
+		i = md380.prototype.get_freq()-0.025;
+		if (i < 400)
+			i = 480;
+		i = Math.round(i*40)/40;
+		md380.prototype.set_freq(i);
+		update_freq();
+		break;
+	case '*':
+		var old_freq = md380.prototype.get_freq();
+		md380.prototype.scan(old_freq + 0.025, 480, 0.025, undefined, update_freq);
+		update_freq();
+		break;
+	case '#':
+		var old_freq = md380.prototype.get_freq();
+		md380.prototype.scan(old_freq - 0.025, 400, -0.025, undefined, update_freq);
+		update_freq();
+		break;
+	case 'R':
+	case 'P':
+	case 'p':
+		if (instr !== undefined) {
+			update_freq();
+			instr = undefined;
+		}
+		break;
+	case 'X':
+		LCD.drawString("POWER OFF", 10, 50);
+		for (i=0; i<50000; i++);
+		A7.reset();
+		break;
+	}
 }
 
 md380.prototype.ReadSecurity = function (addr) {
@@ -413,7 +552,7 @@ md380.prototype.fm_audio = function(on)
 	}
 }
 
-md380.prototype.scan = function(start, end, step, squelch) {
+md380.prototype.scan = function(start, end, step, squelch, cb) {
 	// TODO: Handle VHF radios as well
 	if (start === undefined)
 		start = last_set_freq;
@@ -448,6 +587,8 @@ md380.prototype.scan = function(start, end, step, squelch) {
 	this.fm_audio(false);
 	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
 		if (this.set_freq(freq)) {
+			if (cb !== undefined)
+				cb();
 			rssi = analogRead(B0);
 			if (rssi > squelch) {
 				/* Listen to that audio right there! */
@@ -465,7 +606,6 @@ md380.prototype.scan = function(start, end, step, squelch) {
 	return false;
 };
 
-// const COLOR_BG = [ .45, .63, .90 ]; // Background
 // LCD.setColor.apply(LCD, COLOR_BG);
 // LCD.fillRect(0, 0, 159, 114);
 // var md = require('md380').get();
@@ -474,5 +614,16 @@ md380.prototype.scan = function(start, end, step, squelch) {
 // sb.demo();
 
 exports.get = function () {
+	var ret = new md380();
+	ret.fm_mode(446);
+	LCD.setColor.apply(LCD, COLOR_BG);
+	LCD.fillRect(0, 0, 159, 114);
+	SB = new ret.StatusBar();
+	SB.draw_static();
+	LCD.setFontVector(30);
+	LCD.drawString("446.000",10,20);
+	ret.fm_mode();
+	setInterval(ret.pollFunc, 20);
+	TYTKeyPad.on('keyPress', ret.keyHandler);
 	return new md380();
 }
