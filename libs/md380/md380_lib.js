@@ -183,7 +183,7 @@ md380.prototype.keyHandler = function(key) {
 	}
 
 	function update_freq() {
-		instr = md380.prototype.get_freq().toString();
+		instr = (Math.round(md380.prototype.get_freq()*1000)/1000).toString();
 		if (instr.length == 3)
 			instr += '.';
 		instr = (instr+"000").substr(0, 7);
@@ -288,6 +288,132 @@ md380.prototype.ReadSecurity = function (addr) {
 	return ret;
 };
 
+md380.prototype.ReadCalibration = function() {
+	var sec = new Uint8Array(512);
+	sec.set(this.ReadSecurity(0x1000), 0);
+	sec.set(this.ReadSecurity(0x2000), 256);
+	var ret = {freq:[], tx_freq:{}, rx_freq:{}};
+	var obj;
+	var i;
+
+	function decode_bcd(val) {
+		var ret = parseInt(val[3]).toString(16) + 
+			parseInt(val[2]).toString(16) + 
+			parseInt(val[1]).toString(16) + 
+			parseInt(val[0]).toString(16);
+		return parseInt(ret)/10000;
+	}
+
+	ret.vox1 = sec[0];
+	ret.vox10 = sec[1];
+	ret.rx_low_voltage = sec[2];
+	ret.rx_full_voltage = sec[3];
+	ret.RSSI1 = sec[4];
+	ret.RSSI4 = sec[5];
+	ret.analog_mic = sec[6];
+	ret.digital_mic = sec[7];
+	ret.freq_adjust_high = sec[8];
+	ret.freq_adjust_mid = sec[9];
+	ret.freq_adjust_low1 = sec[10];
+
+	for (i=0; i<9; i++) {
+		obj = {};
+		obj.rx_freq = decode_bcd(sec.slice(432 + (8*i), 432 + (8*i) + 4));
+		obj.tx_freq = decode_bcd(sec.slice(436 + (8*i), 436 + (8*i) + 4));
+		obj.tx_high_power = sec[16 + i];
+		obj.tx_low_power = sec[32 + i];
+		obj.rx_sensitivity = sec[48 + i];
+		obj.open_sql_9 = sec[64 + i];
+		obj.close_sql_9 = sec[80 + i];
+		obj.open_sql_1 = sec[96 + i];
+		obj.close_sql_1 = sec[112 + i];
+		obj.max_volume = sec[128 + i];
+		obj.ctcss_67hz = sec[144 + i];
+		obj.ctcss_151_4hz = sec[160 + i];
+		obj.ctcss_254_1hz = sec[176 + i];
+		obj.dcs_mod2 = sec[192 + i];
+		obj.dcs_mod1 = sec[208 + i];
+		obj.mod1_partial = sec[224 + i];
+		obj.analog_voice_adjust = sec[240 + i];
+		obj.lock_voltage_partial = sec[256 + i];
+		obj.send_i_partial = sec[272 + i];
+		obj.send_q_partial = sec[288 + i];
+		obj.send_i_range = sec[304 + i];
+		obj.send_q_range = sec[320 + i];
+		obj.rx_i_partial = sec[336 + i];
+		obj.rx_q_partial = sec[352 + i];
+		obj.analog_send_i_range = sec[368 + i];
+		obj.analog_send_q_range = sec[384 + i];
+		ret.tx_freq[obj.tx_freq] = obj;
+		ret.rx_freq[obj.rx_freq] = obj;
+		ret.freq.push(obj);
+	}
+
+	return ret;
+}
+
+var calib;
+md380.prototype.get_calibration = function(freq, tx, val)
+{
+	var below;
+	var above;
+	var fval;
+	var i;
+
+	if (calib === undefined)
+		calib = this.ReadCalibration();
+	if (tx === undefined)
+		tx = false;
+	if (val === undefined)
+		return undefined;
+	if (isNaN(freq))
+		return undefined;
+	if (tx)
+		fval = 'tx_freq';
+	else
+		fval = 'rx_freq';
+
+	/* If it's a global, return that */
+	if (calib.hasOwnProperty(val))
+		return calib[val];
+
+	/* If there's an exact frequency match, use it */
+	if (calib[fval].hasOwnProperty(freq)) {
+		if (calib[fval][freq].hasOwnProperty(val))
+			return calib[fval][freq][val];
+		return undefined;
+	}
+
+	/* Otherwise, find the two closest frequencies and interpolate the value */
+	for (i in calib.freq) {
+		if (calib.freq[i][fval] < freq) {
+			if (below == undefined || below[fval] > calib.freq[i][fval])
+				below = calib.freq[i];
+		}
+		if (calib.freq[i][fval] > freq) {
+			if (above == undefined || above[fval] > calib.freq[i][fval])
+				above = calib.freq[i];
+		}
+	}
+
+	if (below === undefined && above === undefined)
+		return undefined;
+
+	/* TODO: Should we extrapolate instead of clamping?  Could be dangerous... */
+	if (below === undefined)
+		return above[val];
+	if (above === undefined)
+		return below[val];
+
+	/* Interpolate */
+	x = freq
+	x1 = below[fval]
+	x2 = above[fval]
+	y1 = below[val]
+	y2 = above[val]
+	return below[val] + (((freq - below[fval])*(above[val]-below[val]))/(above[fval]-below[fval]));
+};
+
 md380.prototype.cs_5000_read = function(reg) {
 	E6.reset();
 	var c5 = new SPI();
@@ -313,10 +439,10 @@ md380.prototype.init_pins = function() {
 	A3.mode('analog');			// ?? VOX
 	A4.mode('analog');			// ?? APC/TV
 	/* TODO: Adjust sensitivity somehow... maybe tied to rx_sensitivity calibration setting? */
-	analogWrite(A4, 0.5, {soft:false});
+	analogWrite(A4, 0, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
 	/* TODO: Appears to come from freq_adjust_* in calibration data */
-	analogWrite(A5, 98/0xfff, {soft:false});
+	analogWrite(A5, ((this.get_calibration(last_set_freq, false, 'freq_adjust_mid') << 2) + 0x600)/0xfff, {soft:false});
 	A6.mode('input_pullup');		// Keypad (K1)
 	A7.mode('output');			// Power switch override
 	A7.reset();
@@ -542,12 +668,13 @@ md380.prototype.set_freq = function(freq, high) {
 	// TODO: Handle VHF radios as well
 	if (freq < 400 || freq > 480)
 		return false;
-	ret = set_vco(freq-49.95, high);
+	ret = set_vco(freq-49.96, high);
 	if (ret === false) {
 		last_set_freq = undefined;
 		return false;
 	}
-	last_set_freq = ret+49.95;
+	last_set_freq = ret+49.96;
+	analogWrite(A4, this.get_calibration(last_set_freq, false, 'rx_sensitivity')/255);
 	return true;
 };
 
@@ -602,6 +729,12 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 		this.fm_mode(freq);
 	/* Mute audio */
 	this.fm_audio(false);
+	/* Wait for no keys to be pressed */
+	while(1) {
+		TYTKeyPad.poll();
+		if (!TYTKeyPad.getPressed())
+			break;
+	}
 	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
 		if (this.set_freq(freq)) {
 			if (cb !== undefined)
@@ -619,6 +752,9 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 		}
 		else
 			return false;
+		TYTKeyPad.poll();
+		if (TYTKeyPad.getPressed())
+			break;
 	}
 	return false;
 };
