@@ -58,6 +58,8 @@ keypad_read(void)
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 11) ? 0 : (1<<18);	// P
 	gpios |= jshPinGetValue(JSH_PORTE_OFFSET + 12) ? 0 : (1<<19);	// p
 	gpios |= jshPinGetValue(JSH_PORTA_OFFSET + 1) ? 0 : (1<<20);	// X
+	/* Reset back to analog for battery meter */
+	jshPinSetState(JSH_PORTA_OFFSET + 1, JSHPINSTATE_ADC_IN);
 
 	return gpios;
 }
