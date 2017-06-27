@@ -842,7 +842,7 @@ md380.prototype.start_ui = function() {
 
 md380.prototype.stop_ui = function() {
 	clearInterval(this.pollInterval);
-	TYTKeyPad.removeListener(this.keyHandler);
+	TYTKeyPad.removeListener('keyPress', this.keyHandler);
 };
 
 // LCD.setColor.apply(LCD, COLOR_BG);
