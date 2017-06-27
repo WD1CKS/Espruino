@@ -7,11 +7,16 @@ function clamp(min, max, val) {
 	return (val >= min && val <= max ? val : (val < min ? min : max));
 }
 
-function draw_bargraph(x, y, w, h, steps, bg, lo, md, hi, val) {
-	LCD.setColor.apply(LCD, bg);
-	LCD.fillRect(x, y, x + w - 1, y + h - 1);
+function draw_bargraph(x, y, w, h, steps, bg, lo, md, hi, val, lval) {
 	var bw = Math.floor(w / steps); // width of an individual bar
 	var nb = Math.round((w / bw) * val); // number of bars to show
+	if (lval !== undefined) {
+		var lnb = Math.round((w / bw) * lval); // number of bars to show
+		if (nb == lnb)
+			return;
+	}
+	LCD.setColor.apply(LCD, bg);
+	LCD.fillRect(x, y, x + w - 1, y + h - 1);
 	if (nb < 1) return; // We've cleared the space and don't need to show anything
 	LCD.setColor.apply(LCD, val >= .66 ? hi : (val >= .33 ? md : lo));
 	for (var n = 0; n < nb; n++) {
@@ -59,13 +64,21 @@ md380.prototype.StatusBar = function () {
 	const COLOR_SB = [ .77, .77, .77 ]; // Status bar
 	const COLOR_BD = [ 0, 0, 0 ]; // Borders
 
+	this.last_battery = undefined;
 	this.update_battery = function (val) {
+		var ex = BATT_X + 1 + Math.floor((BATT_W - 4) * val);
+		if (this.last_battery !== undefined) {
+			var lex = BATT_X + 1 + Math.floor((BATT_W - 4) * this.last_battery);
+			if (lex == ex)
+				return;
+		}
+		this.last_battery = val;
 		// Clear dynamic area
 		LCD.setColor.apply(LCD, COLOR_SB);
 		LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + BATT_W - 3, SB_IC_Y + SB_IC_H - 2);
 		// Fill with appropriate width & colour
 		LCD.setColor.apply(LCD, val >= .5 ? COLOR_HI : (val >= .25 ? COLOR_MD : COLOR_LO));
-		LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, BATT_X + 1 + Math.floor((BATT_W - 4) * val), SB_IC_Y + SB_IC_H - 2);
+		LCD.fillRect(BATT_X + 1, SB_IC_Y + 1, ex, SB_IC_Y + SB_IC_H - 2);
 		// Overlay level markers
 		LCD.setColor.apply(LCD, COLOR_BD);
 		for (var n = 1; n < 6; n++) {
@@ -74,17 +87,26 @@ md380.prototype.StatusBar = function () {
 		}
 	}
 
+	this.last_rssi = undefined;
 	this.update_rssi = function (val) {
-		draw_bargraph(RSSI_X + 1, SB_IC_Y, RSSI_W - 2, SB_IC_H - 1, 6, COLOR_SB, COLOR_LO, COLOR_MD, COLOR_HI, clamp(0, 1, val));
+		draw_bargraph(RSSI_X + 1, SB_IC_Y, RSSI_W - 2, SB_IC_H - 1, 6, COLOR_SB, COLOR_LO, COLOR_MD, COLOR_HI, clamp(0, 1, val), clamp(0, 1, this.last_rssi));
+		this.last_rssi = val;
 	}
 
+	this.last_volume = undefined;
 	this.update_volume = function (val) {
+		var bars = Math.round((clamp(0, 1, val) * 100) / 10);
+		if (this.last_volume !== undefined) {
+			var lbars = Math.round((clamp(0, 1, this.last_volume) * 100) / 10);
+			if (lbars == bars)
+				return;
+		}
+		this.last_volume = val;
 		var sx = SPK_X + 6;
 		// Clear dynamic area
 		LCD.setColor.apply(LCD, COLOR_SB);
 		LCD.fillRect(sx, SB_IC_Y - 1, sx + 19, SB_IC_Y + SB_IC_H);
 		// Find number of bars to draw
-		var bars = Math.round((clamp(0, 1, val) * 100) / 10);
 		if (bars < 1) return;
 		LCD.setColor.apply(LCD, COLOR_BD);
 		for (var n = 0; n < bars; n++) {
@@ -109,6 +131,9 @@ md380.prototype.StatusBar = function () {
 		// Battery outline
 		LCD.drawRect(BATT_X, SB_IC_Y, BATT_X + BATT_W - 2, SB_IC_Y + SB_IC_H - 1);
 		LCD.drawRect(BATT_X + BATT_W - 1, SB_IC_Y + 2, BATT_X + BATT_W, SB_IC_Y + SB_IC_H - 2);
+		this.last_rssi = undefined;
+		this.last_volume = undefined;
+		this.last_battery = undefined;
 	}
 
 	this.demo = function (cease) {
@@ -126,9 +151,11 @@ md380.prototype.StatusBar = function () {
 
 }
 
+var backlight_on;
 var SB;
 var pc = 0;
 var squelch_value = 0.4;
+var squelch_open = false;
 md380.prototype.pollFunc = function() {
 	TYTKeyPad.poll();
 	if (SB===undefined) {
@@ -138,35 +165,52 @@ md380.prototype.pollFunc = function() {
 	var rssi = analogRead(B0);
 	if (curr_mode === 1) {
 		if (rssi >= squelch_value) {
-			md380.prototype.fm_audio(true);
-			E0.set();
+			if (!squelch_open) {
+				md380.prototype.fm_audio(true);
+				E0.set();
+				squelch_open = true;
+				SB.update_rssi((rssi-.2)*3);
+				C6.reset();
+				backlight_on = undefined;
+			}
 		}
 		else {
-			md380.prototype.fm_audio(false);
-			E0.reset();
+			if (squelch_open) {
+				if (rssi < squelch_value - 0.035) {
+					md380.prototype.fm_audio(false);
+					E0.reset();
+					squelch_open = false;
+				}
+			}
 		}
 	}
 
-	SB.update_rssi((rssi-.2)*3);
-	if (pc % 12 == 0) {
-		SB.update_battery(analogRead(A1)/0.85);
-		var vol = analogRead(A0)*65535;
-		if (vol < 5000)
-			vol = (vol/1000+1);
-		else {
-			vol -= 5000;
-			vol /= 6750;
-			vol += 6;
-			if (vol > 10)
-				vol = 10;
+	var rotato = TYTRotato;
+	squelch_value = rotato*(1/20);
+	if (backlight_on !== undefined) {
+		if (pc % 24 == 0) {
+			SB.update_rssi((rssi-.2)*3);
+			SB.update_battery(analogRead(A1)/0.85);
+			var vol = analogRead(A0)*65535;
+			if (vol < 5000)
+				vol = (vol/1000+1);
+			else {
+				vol -= 5000;
+				vol /= 6750;
+				vol += 6;
+				if (vol > 10)
+					vol = 10;
+			}
+			vol /= 10;
+			SB.update_volume(vol);
+			pc = 0;
 		}
-		vol /= 10;
-		SB.update_volume(vol);
-		pc = 0;
-		var rotato = TYTRotato;
-		squelch_value = rotato*(1/20);
+		pc++;
+		if (backlight_on + 5 < getTime()) {
+			backlight_on = undefined;
+			C6.reset();
+		}
 	}
-	pc++;
 };
 
 var instr;
@@ -189,6 +233,11 @@ md380.prototype.keyHandler = function(key) {
 		instr = (instr+"000").substr(0, 7);
 		freq_str(instr);
 		instr = undefined;
+	}
+
+	if (backlight_on === undefined) {
+		C6.set();
+		backlight_on = getTime();
 	}
 
 	switch(key) {
@@ -746,16 +795,20 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 				B9.set();
 				B8.reset();
 				E13.set();
+				backlight_on = getTime();
 				return last_set_freq;
 			}
 			freq += step;
 		}
-		else
+		else {
+			backlight_on = getTime();
 			return false;
+		}
 		TYTKeyPad.poll();
 		if (TYTKeyPad.getPressed())
 			break;
 	}
+	backlight_on = getTime();
 	return false;
 };
 
@@ -772,6 +825,26 @@ md380.prototype.get_squelch = function() {
 	return squelch_value;
 };
 
+md380.prototype.start_ui = function() {
+	this.fm_mode(446);
+	LCD.setColor.apply(LCD, COLOR_BG);
+	LCD.fillRect(0, 0, 159, 114);
+	if (SB === undefined)
+		SB = new this.StatusBar();
+	SB.draw_static();
+	LCD.setFontVector(30);
+	LCD.drawString("446.000",10,20);
+	this.fm_mode();
+	this.pollInterval = setInterval(this.pollFunc, 10);
+	TYTKeyPad.on('keyPress', this.keyHandler);
+	backlight_on = getTime();
+};
+
+md380.prototype.stop_ui = function() {
+	clearInterval(this.pollInterval);
+	TYTKeyPad.removeListener(this.keyHandler);
+};
+
 // LCD.setColor.apply(LCD, COLOR_BG);
 // LCD.fillRect(0, 0, 159, 114);
 // var md = require('md380').get();
@@ -780,16 +853,5 @@ md380.prototype.get_squelch = function() {
 // sb.demo();
 
 exports.get = function () {
-	var ret = new md380();
-	ret.fm_mode(446);
-	LCD.setColor.apply(LCD, COLOR_BG);
-	LCD.fillRect(0, 0, 159, 114);
-	SB = new ret.StatusBar();
-	SB.draw_static();
-	LCD.setFontVector(30);
-	LCD.drawString("446.000",10,20);
-	ret.fm_mode();
-	setInterval(ret.pollFunc, 20);
-	TYTKeyPad.on('keyPress', ret.keyHandler);
 	return new md380();
 };
