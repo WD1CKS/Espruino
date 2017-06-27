@@ -257,7 +257,7 @@ md380.prototype.keyHandler = function(key) {
 			instr += '.';
 		instr += key;
 		if (instr.length == 7) {
-			md380.prototype.set_freq(parseFloat(instr));
+			md380.prototype.set_freq(parseFloat(instr), true);
 			update_freq();
 			instr = undefined;
 		}
@@ -273,7 +273,7 @@ md380.prototype.keyHandler = function(key) {
 				instr += '0';
 			}
 			if (instr.length == 7) {
-				md380.prototype.set_freq(parseFloat(instr));
+				md380.prototype.set_freq(parseFloat(instr), true);
 				instr = undefined;
 			}
 			update_freq();
@@ -290,7 +290,7 @@ md380.prototype.keyHandler = function(key) {
 		if (i > 480)
 			i = 400;
 		i = Math.round(i*40)/40;
-		md380.prototype.set_freq(i);
+		md380.prototype.set_freq(i, true);
 		update_freq();
 		break;
 	case 'D':
@@ -298,7 +298,7 @@ md380.prototype.keyHandler = function(key) {
 		if (i < 400)
 			i = 480;
 		i = Math.round(i*40)/40;
-		md380.prototype.set_freq(i);
+		md380.prototype.set_freq(i, true);
 		update_freq();
 		break;
 	case '*':
@@ -616,7 +616,7 @@ md380.prototype.fm_mode = function(freq) {
 	C7.set();
 	C9.set();
 	if (freq !== undefined) {
-		if (!this.set_freq(freq)) {
+		if (!this.set_freq(freq, true)) {
 			this.init_pins();
 			return false;
 		}
@@ -785,7 +785,7 @@ md380.prototype.scan = function(start, end, step, squelch, cb) {
 			break;
 	}
 	while((freq <= end && freq >= start) || (freq <= start && freq >= end)) {
-		if (this.set_freq(freq)) {
+		if (this.set_freq(freq, true)) {
 			if (cb !== undefined)
 				cb();
 			rssi = analogRead(B0);
