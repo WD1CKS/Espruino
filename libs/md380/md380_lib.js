@@ -668,12 +668,12 @@ md380.prototype.set_freq = function(freq, high) {
 	// TODO: Handle VHF radios as well
 	if (freq < 400 || freq > 480)
 		return false;
-	ret = set_vco(freq-49.96, high);
+	ret = set_vco(freq-49.955, high);
 	if (ret === false) {
 		last_set_freq = undefined;
 		return false;
 	}
-	last_set_freq = ret+49.96;
+	last_set_freq = ret+49.955;
 	analogWrite(A4, this.get_calibration(last_set_freq, false, 'rx_sensitivity')/255);
 	return true;
 };
