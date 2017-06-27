@@ -1,11 +1,13 @@
 #include "jswrap_tytpad.h"
 #include "jsinteractive.h"
 #include "button_debounce.h"
+#include "stm32f4xx_gpio.h"
 
 static uint32_t
 keypad_read(void)
 {
 	uint32_t	gpios = 0;
+	GPIO_InitTypeDef gpi = {0};
 
 	/* Input pins */
 	jshPinSetState(JSH_PORTD_OFFSET + 0,JSHPINSTATE_GPIO_IN_PULLUP);
@@ -21,9 +23,23 @@ keypad_read(void)
 	jshPinSetState(JSH_PORTA_OFFSET + 1, JSHPINSTATE_GPIO_IN);
 
 	/* Output pins */
+	/*
+	 * We can't configure these using jshPinSetState because we're 
+	 * not in control of the speed that way.
+	 */
+	gpi.GPIO_Mode = GPIO_Mode_OUT;
+	gpi.GPIO_Speed = GPIO_Speed_2MHz;
+	gpi.GPIO_OType = GPIO_OType_PP;
+	gpi.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	gpi.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3;
+	GPIO_Init(GPIOD, &gpi);
+	gpi.GPIO_Pin = GPIO_Pin_6;
+	GPIO_Init(GPIOA, &gpi);
+	/*
 	jshPinSetState(JSH_PORTA_OFFSET + 6, JSHPINSTATE_GPIO_OUT);
 	jshPinSetState(JSH_PORTD_OFFSET + 2, JSHPINSTATE_GPIO_OUT);
 	jshPinSetState(JSH_PORTD_OFFSET + 3, JSHPINSTATE_GPIO_OUT);
+	*/
 
 	jshPinSetValue(JSH_PORTA_OFFSET + 6, 0);
 	jshPinSetValue(JSH_PORTD_OFFSET + 2, 1);
