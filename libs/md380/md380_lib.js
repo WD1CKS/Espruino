@@ -487,10 +487,10 @@ md380.prototype.init_pins = function() {
 	A2.mode('analog');			// ?? Analog FM in?
 	A3.mode('analog');			// ?? VOX
 	A4.mode('analog');			// ?? APC/TV
-	/* TODO: Adjust sensitivity somehow... maybe tied to rx_sensitivity calibration setting? */
+	/* Sets FM sensitivity, derived from rx_sensitivity calibration settings */
 	analogWrite(A4, 0, {soft:false});
 	A5.mode('analog');			// ?? MOD2_BIAS
-	/* TODO: Appears to come from freq_adjust_* in calibration data */
+	/* Derived from freq_adjust_mid in calibration data low1 and high don't seem to be used. */
 	analogWrite(A5, ((this.get_calibration(last_set_freq, false, 'freq_adjust_mid') << 2) + 0x600)/0xfff, {soft:false});
 	A6.mode('input_pullup');		// Keypad (K1)
 	A7.mode('output');			// Power switch override
