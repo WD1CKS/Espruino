@@ -15,8 +15,11 @@
  */
 #include "jswrap_interactive.h"
 #include "jswrap_json.h" // for print/console.log
+#include "jswrap_flash.h" // for jsfRemoveCodeFromFlash
 #include "jsvar.h"
+#include "jsflags.h"
 #include "jsinteractive.h"
+
 
 /*JSON{
   "type" : "class",
@@ -37,6 +40,7 @@ A reference to the global scope, where everything is defined.
 /*JSON{
   "type" : "function",
   "name" : "setBusyIndicator",
+  "ifndef" : "SAVE_ON_FLASH",
   "generate" : "jswrap_interface_setBusyIndicator",
   "params" : [
     ["pin","JsVar",""]
@@ -44,6 +48,7 @@ A reference to the global scope, where everything is defined.
 }
 When Espruino is busy, set the pin specified here high. Set this to undefined to disable the feature.
  */
+#ifndef SAVE_ON_FLASH
 void jswrap_interface_setBusyIndicator(JsVar *pinVar) {
   Pin oldPin = pinBusyIndicator;
   pinBusyIndicator = jshGetPinFromVar(pinVar);
@@ -53,10 +58,12 @@ void jswrap_interface_setBusyIndicator(JsVar *pinVar) {
     if (pinBusyIndicator!=PIN_UNDEFINED) jshPinOutput(pinBusyIndicator, 1);
   }
 }
+#endif
 
 /*JSON{
   "type" : "function",
   "name" : "setSleepIndicator",
+  "ifndef" : "SAVE_ON_FLASH",
   "generate" : "jswrap_interface_setSleepIndicator",
   "params" : [
     ["pin","JsVar",""]
@@ -66,6 +73,7 @@ When Espruino is asleep, set the pin specified here low (when it's awake, set it
 
 Please see http://www.espruino.com/Power+Consumption for more details on this.
  */
+#ifndef SAVE_ON_FLASH
 void jswrap_interface_setSleepIndicator(JsVar *pinVar) {
   Pin oldPin = pinSleepIndicator;
   pinSleepIndicator = jshGetPinFromVar(pinVar);
@@ -75,24 +83,23 @@ void jswrap_interface_setSleepIndicator(JsVar *pinVar) {
     if (pinSleepIndicator!=PIN_UNDEFINED) jshPinOutput(pinSleepIndicator, 1);
   }
 }
+#endif
 
 /*JSON{
   "type" : "function",
   "name" : "setDeepSleep",
+  "#if" : "defined(STM32) || defined(EFM32)",
   "generate" : "jswrap_interface_setDeepSleep",
   "params" : [
     ["sleep","bool",""]
   ]
 }
-Set whether we can enter deep sleep mode, which reduces power consumption to around 100uA. This only works on the Espruino Board.
+Set whether we can enter deep sleep mode, which reduces power consumption to around 100uA. This only works on STM32 Espruino Boards (nRF52 boards sleep automatically).
 
 Please see http://www.espruino.com/Power+Consumption for more details on this.
  */
 void jswrap_interface_setDeepSleep(bool sleep) {
-  if (sleep)
-    jsiStatus |= JSIS_ALLOW_DEEP_SLEEP;
-  else
-    jsiStatus &= ~JSIS_ALLOW_DEEP_SLEEP;
+  jsfSetFlag(JSF_DEEP_SLEEP, sleep);
 }
 
 
@@ -106,13 +113,20 @@ void jswrap_interface_setDeepSleep(bool sleep) {
   ]
 }
 Output debugging information
+
+Note: This is not included on boards with low amounts of flash memory, or the Espruino board.
  */
 void jswrap_interface_trace(JsVar *root) {
+  #ifdef ESPRUINOBOARD
+  // leave this function out on espruino board - we need to save as much flash as possible
+  jsiConsolePrintf("Trace not included on this board");
+  #else
   if (jsvIsUndefined(root)) {
     jsvTrace(execInfo.root, 0);
   } else {
     jsvTrace(root, 0);
   }
+  #endif
 }
 
 
@@ -170,14 +184,30 @@ hold Button 1 down a fraction of a second later.
 /*JSON{
   "type" : "function",
   "name" : "reset",
-  "generate_full" : "jsiStatus|=JSIS_TODO_RESET;"
+  "generate" : "jswrap_interface_reset",
+  "params" : [
+    ["clearFlash","bool","Remove saved code from flash as well"]
+  ]
 }
-Reset the interpreter - clear program memory, and do not load a saved program from flash. This does NOT reset the underlying hardware (which allows you to reset the device without it disconnecting from USB).
+Reset the interpreter - clear program memory in RAM, and do not load a saved program from flash. This does NOT reset the underlying hardware (which allows you to reset the device without it disconnecting from USB).
 
 This command only executes when the Interpreter returns to the Idle state - for instance ```a=1;reset();a=2;``` will still leave 'a' as undefined.
 
 The safest way to do a full reset is to hit the reset button.
- */
+
+If `reset()` is called with no arguments, it will reset the board's state in
+RAM but will not reset the state in flash. When next powered on (or when
+`load()` is called) the board will load the previously saved code.
+
+Calling `reset(true)` will cause *all saved code in flash memory to
+be cleared as well*.
+
+*/
+void jswrap_interface_reset(bool clearFlash) {
+  jsiStatus |= JSIS_TODO_RESET;
+  if (clearFlash) jsfRemoveCodeFromFlash();
+}
+
 /*JSON{
   "type" : "function",
   "name" : "print",
@@ -243,7 +273,7 @@ void jswrap_interface_edit(JsVar *funcName) {
     func = jsvSkipNameAndUnLock(jsvFindChildFromVar(execInfo.root, funcName, 0));
   } else {
     func = funcName;
-    funcName = jsvGetPathTo(execInfo.root, func, 2, 0);
+    funcName = jsvGetPathTo(execInfo.root, func, 4, 0);
   }
 
   if (jsvIsString(funcName)) {
@@ -263,7 +293,7 @@ void jswrap_interface_edit(JsVar *funcName) {
          * foo.replaceWith(function() { ... });
          *
          */
-        JsVar *funcData = jsvAsString(func, false);
+        JsVar *funcData = jsvAsString(func);
 
         if (normalDecl) {
           jsvAppendString(newLine, "function ");
@@ -298,7 +328,7 @@ void jswrap_interface_edit(JsVar *funcName) {
     ["echoOn","bool",""]
   ]
 }
-Should TinyJS echo what you type back to you? true = yes (Default), false = no. When echo is off, the result of executing a command is not returned. Instead, you must use 'print' to send output.
+Should Espruino echo what you type back to you? true = yes (Default), false = no. When echo is off, the result of executing a command is not returned. Instead, you must use 'print' to send output.
  */
 void jswrap_interface_echo(bool echoOn) {
   if (echoOn)
@@ -324,7 +354,12 @@ Return the current system time in Seconds (as a floating point number)
     ["time","float",""]
   ]
 }
-Set the current system time in seconds (to the nearest second)
+Set the current system time in seconds (to the nearest second).
+
+This is used with `getTime`, the time reported from `setWatch`, as
+well as when using `new Date()`.
+
+To set the timezone for all new Dates, use `E.setTimeZone(hours)`.
  */
 void jswrap_interactive_setTime(JsVarFloat time) {
   JsSysTime stime = jshGetTimeFromMilliseconds(time*1000);
@@ -363,7 +398,7 @@ JsVar *jswrap_interface_getSerial() {
   "generate" : "jswrap_interface_setInterval",
   "params" : [
     ["function","JsVar","A Function or String to be executed"],
-    ["timeout","float","The time between calls to the function"],
+    ["timeout","float","The time between calls to the function (max 3153600000000 = 100 years"],
     ["args","JsVarArray","Optional arguments to pass to the function when executed"]
   ],
   "return" : ["JsVar","An ID that can be passed to clearInterval"]
@@ -401,7 +436,7 @@ was returned by `setInterval` into the `clearInterval` function.
   "generate" : "jswrap_interface_setTimeout",
   "params" : [
     ["function","JsVar","A Function or String to be executed"],
-    ["timeout","float","The time until the function will be executed"],
+    ["timeout","float","The time until the function will be executed (max 3153600000000 = 100 years"],
     ["args","JsVarArray","Optional arguments to pass to the function when executed"]
   ],
   "return" : ["JsVar","An ID that can be passed to clearTimeout"]
@@ -435,27 +470,30 @@ was returned by `setTimeout` into the `clearInterval` function.
  */
 JsVar *_jswrap_interface_setTimeoutOrInterval(JsVar *func, JsVarFloat interval, JsVar *args, bool isTimeout) {
   // NOTE: The 5 sec delay mentioned in the description is handled by jshSleep
-  JsVar *itemIndex = 0;
   if (!jsvIsFunction(func) && !jsvIsString(func)) {
     jsExceptionHere(JSET_ERROR, "Function or String not supplied!");
-  } else {
-    // Create a new timer
-    JsVar *timerPtr = jsvNewObject();
-    if (interval<TIMER_MIN_INTERVAL) interval=TIMER_MIN_INTERVAL;
-    JsSysTime intervalInt = jshGetTimeFromMilliseconds(interval);
-    jsvObjectSetChildAndUnLock(timerPtr, "time", jsvNewFromLongInteger((jshGetSystemTime() - jsiLastIdleTime) + intervalInt));
-    if (!isTimeout) {
-      jsvObjectSetChildAndUnLock(timerPtr, "interval", jsvNewFromLongInteger(intervalInt));
-    }
-    jsvObjectSetChild(timerPtr, "callback", func); // intentionally no unlock
-    if (jsvGetArrayLength(args))
-      jsvObjectSetChild(timerPtr, "args", args); // intentionally no unlock
-
-    // Add to array
-    itemIndex = jsvNewFromInteger(jsiTimerAdd(timerPtr));
-    jsvUnLock(timerPtr);
-    jsiTimersChanged(); // mark timers as changed
+    return 0;
   }
+  if (isnan(interval) || interval<TIMER_MIN_INTERVAL) interval=TIMER_MIN_INTERVAL;
+  if (interval>TIMER_MAX_INTERVAL) {
+    jsExceptionHere(JSET_ERROR, "Interval is too long (>100 years)");
+    return 0;
+  }
+  // Create a new timer
+  JsVar *timerPtr = jsvNewObject();
+  JsSysTime intervalInt = jshGetTimeFromMilliseconds(interval);
+  jsvObjectSetChildAndUnLock(timerPtr, "time", jsvNewFromLongInteger((jshGetSystemTime() - jsiLastIdleTime) + intervalInt));
+  if (!isTimeout) {
+    jsvObjectSetChildAndUnLock(timerPtr, "interval", jsvNewFromLongInteger(intervalInt));
+  }
+  jsvObjectSetChild(timerPtr, "callback", func); // intentionally no unlock
+  if (jsvGetArrayLength(args))
+    jsvObjectSetChild(timerPtr, "args", args); // intentionally no unlock
+
+  // Add to array
+  JsVar *itemIndex = jsvNewFromInteger(jsiTimerAdd(timerPtr));
+  jsvUnLock(timerPtr);
+  jsiTimersChanged(); // mark timers as changed
   return itemIndex;
 }
 JsVar *jswrap_interface_setInterval(JsVar *func, JsVarFloat timeout, JsVar *args) {
@@ -473,7 +511,7 @@ JsVar *jswrap_interface_setTimeout(JsVar *func, JsVarFloat timeout, JsVar *args)
     ["id","JsVar","The id returned by a previous call to setInterval"]
   ]
 }
-Clear the Interval that was created with setInterval, for example:
+Clear the Interval that was created with `setInterval`, for example:
 
 ```var id = setInterval(function () { print('foo'); }, 1000);```
 
@@ -489,7 +527,7 @@ If no argument is supplied, all timers and intervals are stopped
     ["id","JsVar","The id returned by a previous call to setTimeout"]
   ]
 }
-Clear the Timeout that was created with setTimeout, for example:
+Clear the Timeout that was created with `setTimeout`, for example:
 
 ```var id = setTimeout(function () { print('foo'); }, 1000);```
 
@@ -546,7 +584,7 @@ void jswrap_interface_clearTimeout(JsVar *idVar) {
     ["time","float","The new time period in ms"]
   ]
 }
-Change the Interval on a callback created with setInterval, for example:
+Change the Interval on a callback created with `setInterval`, for example:
 
 ```var id = setInterval(function () { print('foo'); }, 1000); // every second```
 
@@ -562,12 +600,10 @@ void jswrap_interface_changeInterval(JsVar *idVar, JsVarFloat interval) {
   JsVar *timerName = jsvIsBasic(idVar) ? jsvFindChildFromVar(timerArrayPtr, idVar, false) : 0;
   if (timerName) {
     JsVar *timer = jsvSkipNameAndUnLock(timerName);
-    JsVar *v;
-    JsVarInt intervalInt = (JsVarInt)jshGetTimeFromMilliseconds(interval);
-    v = jsvNewFromInteger(intervalInt);
-    jsvUnLock2(jsvSetNamedChild(timer, v, "interval"), v);
-    v = jsvNewFromInteger((JsVarInt)(jshGetSystemTime()-jsiLastIdleTime) + intervalInt);
-    jsvUnLock3(jsvSetNamedChild(timer, v, "time"), v, timer);
+    JsSysTime intervalInt = jshGetTimeFromMilliseconds(interval);
+    jsvObjectSetChildAndUnLock(timer, "interval", jsvNewFromLongInteger(intervalInt));
+    jsvObjectSetChildAndUnLock(timer, "time", jsvNewFromLongInteger((jshGetSystemTime()-jsiLastIdleTime) + intervalInt));
+    jsvUnLock(timer);
     // timerName already unlocked
     jsiTimersChanged(); // mark timers as changed
   } else {

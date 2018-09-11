@@ -338,10 +338,11 @@ JsVar *jswrap_http_get(JsVar *options, JsVar *callback) {
   "type" : "method",
   "class" : "httpSrv",
   "name" : "listen",
-  "generate" : "jswrap_net_server_listen",
+  "generate_full" : "jswrap_net_server_listen(parent, port, ST_HTTP)",
   "params" : [
     ["port","int32","The port to listen on"]
-  ]
+  ],
+  "return" : ["JsVar","The HTTP server instance that 'listen' was called on"]
 }
 Start listening for new HTTP connections on the given port
 */
@@ -370,7 +371,7 @@ Stop listening for new HTTP connections
   "params" : [
     ["data","JsVar","A string containing data to send"]
   ],
-  "return" : ["bool","For note compatibility, the boolean false. When the send buffer is empty, a `drain` event will be sent"]
+  "return" : ["bool","For node.js compatibility, returns the boolean false. When the send buffer is empty, a `drain` event will be sent"]
 }
 This function writes the `data` argument as a string. Data that is passed in
 (including arrays) will be converted to a string with the normal JavaScript 
@@ -424,7 +425,7 @@ void jswrap_httpSRs_writeHead(JsVar *parent, int statusCode, JsVar *headers) {
   "params" : [
     ["data","JsVar","A string containing data to send"]
   ],
-  "return" : ["bool","For note compatibility, the boolean false. When the send buffer is empty, a `drain` event will be sent"]
+  "return" : ["bool","For node.js compatibility, returns the boolean false. When the send buffer is empty, a `drain` event will be sent"]
 }
 This function writes the `data` argument as a string. Data that is passed in
 (including arrays) will be converted to a string with the normal JavaScript 

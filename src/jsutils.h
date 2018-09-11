@@ -26,9 +26,9 @@
 #include <math.h>
 
 #ifndef BUILDNUMBER
-#define JS_VERSION "1v92"
+#define JS_VERSION "1v99"
 #else
-#define JS_VERSION "1v92." BUILDNUMBER
+#define JS_VERSION "1v99." BUILDNUMBER
 #endif
 /*
   In code:
@@ -39,6 +39,10 @@
 
 #ifndef alloca
 #define alloca(x) __builtin_alloca(x)
+#endif
+
+#ifdef SAVE_ON_FLASH
+#define SAVE_ON_FLASH_MATH 1
 #endif
 
 #if defined(ESP8266)
@@ -106,7 +110,12 @@ int flash_strcmp(const char *mem, const char *flash);
     it as a no-op for everyone else. This is identical the ICACHE_RAM_ATTR used elsewhere. */
 #define CALLED_FROM_INTERRUPT __attribute__((section(".iram1.text")))
 #else
+#if defined(ESP32)
+#include "esp_attr.h"
+#define CALLED_FROM_INTERRUPT IRAM_ATTR
+#else
 #define CALLED_FROM_INTERRUPT
+#endif
 #endif
 
 
@@ -218,9 +227,17 @@ typedef int64_t JsSysTime;
 #define JSLEX_MAX_TOKEN_LENGTH  64 ///< Maximum length we allow tokens (eg. variable names) to be
 #define JS_ERROR_TOKEN_BUF_SIZE 16 ///< see jslTokenAsString
 
-#define JS_NUMBER_BUFFER_SIZE 66 ///< 64 bit base 2 + minus + terminating 0
+#define JS_NUMBER_BUFFER_SIZE 70 ///< Enough for 64 bit base 2 + minus + terminating 0
 
-#define JS_VARS_BEFORE_IDLE_GC 32 ///< If we have less free variables than this, do a garbage collect on Idle
+/* If we have less free variables than this, do a garbage collect on Idle.
+ * Note that the check for free variables takes an amount of time proportional
+ * to the size of JS_VARS_BEFORE_IDLE_GC */
+#ifdef JSVAR_CACHE_SIZE
+#define JS_VARS_BEFORE_IDLE_GC (JSVAR_CACHE_SIZE/20)
+#else
+#define JS_VARS_BEFORE_IDLE_GC 32
+#endif
+
 
 #define JSPARSE_MAX_SCOPES  8
 
@@ -243,6 +260,7 @@ typedef int64_t JsSysTime;
 #define JSPARSE_FUNCTION_LINENUMBER_NAME JS_HIDDEN_CHAR_STR"lin" // The line number offset of the function
 #define JS_EVENT_PREFIX "#on"
 #define JS_TIMEZONE_VAR "tz"
+#define JS_GRAPHICS_VAR "gfx"
 
 #define JSPARSE_EXCEPTION_VAR "except" // when exceptions are thrown, they're stored in the root scope
 #define JSPARSE_STACKTRACE_VAR "sTrace" // for errors/exceptions, a stack trace is stored as a string
@@ -349,8 +367,12 @@ const char *escapeCharacter(char ch);
 int getRadix(const char **s, int forceRadix, bool *hasError);
 /// Convert a character to the hexadecimal equivalent (or -1)
 int chtod(char ch);
-/* convert a number in the given radix to an int. if radix=0, autodetect */
-long long stringToIntWithRadix(const char *s, int radix, bool *hasError);
+/* convert a number in the given radix to an int */
+long long stringToIntWithRadix(const char *s,
+               int forceRadix, //!< if radix=0, autodetect
+               bool *hasError, //!< If nonzero, set to whether there was an error or not
+               const char **endOfInteger //!<  If nonzero, this is set to the point at which the integer finished in the string
+               );
 /* convert hex, binary, octal or decimal string into an int */
 long long stringToInt(const char *s);
 
@@ -404,13 +426,23 @@ typedef enum {
   JSERR_LOW_MEMORY = 8, ///< Memory is running low - Espruino had to run a garbage collection pass or remove some of the command history
   JSERR_MEMORY = 16, ///< Espruino ran out of memory and was unable to allocate some data that it needed.
   JSERR_MEMORY_BUSY = 32, ///< Espruino was busy doing something with memory (eg. garbage collection) so an IRQ couldn't allocate memory
+  JSERR_UART_OVERFLOW = 64, ///< A UART received data but it was not read in time and was lost
+
+  JSERR_WARNINGS_MASK = JSERR_LOW_MEMORY ///< Issues that are warnings, not actual problems
 } PACKED_FLAGS JsErrorFlags;
 
 /** Error flags for things that we don't really want to report on the console,
  * but which are good to know about */
-extern JsErrorFlags jsErrorFlags;
+extern volatile JsErrorFlags jsErrorFlags;
 
-JsVarFloat stringToFloatWithRadix(const char *s, int forceRadix);
+/** Convert a string to a JS float variable where the string is of a specific radix. */
+JsVarFloat stringToFloatWithRadix(
+    const char *s, //!< The string to be converted to a float
+    int forceRadix, //!< The radix of the string data, or 0 to guess
+    const char **endOfFloat //!< If nonzero, this is set to the point at which the float finished in the string
+  );
+
+/** convert a string to a floating point JS variable. */
 JsVarFloat stringToFloat(const char *str);
 
 void itostr_extra(JsVarInt vals,char *str,bool signedVal,unsigned int base); // like itoa, but uses JsVarInt (good on non-32 bit systems)

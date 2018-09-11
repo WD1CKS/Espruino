@@ -29,6 +29,7 @@
 #include "jsinteractive.h"
 #include "jswrap_io.h"
 #include "jsspi.h"
+#include "jsflags.h"
 
 #ifdef ESPRUINOBOARD
 // STM32F1 boards should work with this - but for some reason they crash on init
@@ -50,7 +51,6 @@
 #define IRQ_PRIOR_LOW 15
 
 #ifdef USE_RTC
-
 #include "jswrap_date.h" // for non-F1 calendar -> days since 1970 conversion
 
 // TODO: could jshRTCPrescaler (and the hardware prescaler) be modified on SysTick, to calibrate the LSI against the HSE?
@@ -69,6 +69,8 @@ JsSysTime jshGetRTCSystemTime();
 
 static JsSysTime jshGetTimeForSecond();
 
+// The amount of systicks for one second depends on the clock speed
+#define SYSTICKS_FOR_ONE_SECOND (1+(CLOCK_SPEED_MHZ*1000000/SYSTICK_RANGE))
 
 // see jshPinWatch/jshGetWatchedPinState
 Pin watchedPins[16];
@@ -91,6 +93,19 @@ volatile unsigned char jshSPIBuf[SPI_COUNT][4]; // 4 bytes packed into an int
 JsSysTime jshLastWokenByUSB = 0;
 #endif
 
+/* On STM32 there's no 7 bit UART mode, so
+ * we much just fake it by using an 8 bit UART
+ * and then masking off the top bit */
+unsigned char jsh7BitUART;
+bool jshIsSerial7Bit(IOEventFlags device) {
+  assert(USART_COUNT<=8);
+  return jsh7BitUART & (1<<(device-EV_SERIAL1));
+}
+void jshSetIsSerial7Bit(IOEventFlags device, bool is7Bit) {
+  assert(USART_COUNT<=8);
+  if (is7Bit) jsh7BitUART |= (1<<(device-EV_SERIAL1));
+  else  jsh7BitUART &= ~(1<<(device-EV_SERIAL1));
+}
 
 // ----------------------------------------------------------------------------
 //                                                                        PINS
@@ -168,7 +183,7 @@ static ALWAYS_INLINE uint32_t stmExtI(Pin ipin) {
 }
 
 static ALWAYS_INLINE GPIO_TypeDef *stmPort(Pin pin) {
-  JsvPinInfoPort port = pinInfo[pin].port;
+  JsvPinInfoPort port = pinInfo[pin].port&JSH_PORT_MASK;
   return (GPIO_TypeDef *)((char*)GPIOA + (port-JSH_PORTA)*0x0400);
   /*if (port == JSH_PORTA) return GPIOA;
   if (port == JSH_PORTB) return GPIOB;
@@ -208,7 +223,7 @@ static ALWAYS_INLINE uint8_t stmPinSource(JsvPinInfoPin ipin) {
 }
 
 static ALWAYS_INLINE uint8_t stmPortSource(Pin pin) {
-  JsvPinInfoPort port = pinInfo[pin].port;
+  JsvPinInfoPort port = pinInfo[pin].port&JSH_PORT_MASK;
   return (uint8_t)(port-JSH_PORTA);
 /*#ifdef STM32API2
   if (port == JSH_PORTA) return EXTI_PortSourceGPIOA;
@@ -570,16 +585,16 @@ USART_TypeDef* getUsartFromDevice(IOEventFlags device) {
  switch (device) {
    case EV_SERIAL1 : return USART1;
    case EV_SERIAL2 : return USART2;
-#ifdef USART3
+#if USART_COUNT>=3 && defined(USART3)
    case EV_SERIAL3 : return USART3;
 #endif
-#ifdef UART4
+#if USART_COUNT>=4 && defined(UART4)
    case EV_SERIAL4 : return UART4;
 #endif
-#ifdef UART5
+#if USART_COUNT>=5 && defined(UART5)
    case EV_SERIAL5 : return UART5;
 #endif
-#ifdef USART6
+#if USART_COUNT>=6
    case EV_SERIAL6 : return USART6;
 #endif
    default: return 0;
@@ -589,8 +604,12 @@ USART_TypeDef* getUsartFromDevice(IOEventFlags device) {
 SPI_TypeDef* getSPIFromDevice(IOEventFlags device) {
  switch (device) {
    case EV_SPI1 : return SPI1;
+#if SPI_COUNT>=2
    case EV_SPI2 : return SPI2;
+#endif
+#if SPI_COUNT>=3
    case EV_SPI3 : return SPI3;
+#endif
    default: return 0;
  }
 }
@@ -599,7 +618,7 @@ I2C_TypeDef* getI2CFromDevice(IOEventFlags device) {
  switch (device) {
    case EV_I2C1 : return I2C1;
    case EV_I2C2 : return I2C2;
-#ifdef I2C3
+#if I2C_COUNT>=3
    case EV_I2C3 : return I2C3;
 #endif
    default: return 0;
@@ -822,7 +841,7 @@ void jshDoSysTick() {
 
   /* One second after start, call jsinteractive. This is used to swap
    * to USB (if connected), or the Serial port. */
-  if (ticksSinceStart == 5) {
+  if (ticksSinceStart == SYSTICKS_FOR_ONE_SECOND) {
     jsiOneSecondAfterStartup();
   }
 }
@@ -839,6 +858,10 @@ void jshInterruptOn() {
   //  jshPinSetValue(LED4_PININDEX,0);
 }
 
+/// Are we currently in an interrupt?
+bool jshIsInInterrupt() {
+  return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
+}
 
 //int JSH_DELAY_OVERHEAD = 0;
 int JSH_DELAY_MULTIPLIER = 1;
@@ -1058,6 +1081,7 @@ void jshInit() {
 #ifdef STM32F1
   BITFIELD_CLEAR(jshPinOpendrainPullup);
 #endif
+  jsh7BitUART = 0;
 
   // enable clocks
  #if defined(STM32F3)
@@ -1335,7 +1359,7 @@ void jshIdle() {
         jsiSetConsoleDevice(EV_USBSERIAL, false);
     } else {
       if (!jsiIsConsoleDeviceForced() && jsiGetConsoleDevice()==EV_USBSERIAL)
-        jsiSetConsoleDevice(DEFAULT_CONSOLE_DEVICE, false);
+        jsiSetConsoleDevice(jsiGetPreferredConsoleDevice(), false);
       jshTransmitClearDevice(EV_USBSERIAL); // clear the transmit queue
     }
   }
@@ -1428,10 +1452,10 @@ JsSysTime jshGetRTCSystemTime() {
 
   CalendarDate cdate;
   TimeInDay ctime;
-  cdate.day = date.RTC_Date;
-  cdate.month = date.RTC_Month;
-  cdate.year = 2000+date.RTC_Year;
-  cdate.dow = date.RTC_WeekDay%7;
+  cdate.day = date.RTC_Date; // 1..31 -> 1..31
+  cdate.month = date.RTC_Month-1; // 1..12 -> 0..11
+  cdate.year = 2000+date.RTC_Year; // 0..99 -> 2000..2099
+  cdate.dow = date.RTC_WeekDay%7; // 1(monday)..7 -> 0(sunday)..6
   ctime.daysSinceEpoch = fromCalenderDate(&cdate);
   ctime.zone = 0;
   ctime.ms = 0;
@@ -1501,10 +1525,12 @@ void jshSetSystemTime(JsSysTime newTime) {
   TimeInDay ctime = getTimeFromMilliSeconds((JsVarFloat)newTime * 1000 / JSSYSTIME_SECOND, true /*force to GMT*/);
   CalendarDate cdate = getCalendarDate(ctime.daysSinceEpoch);
 
-  date.RTC_Date = (uint8_t)cdate.day;
-  date.RTC_Month = (uint8_t)cdate.month;
-  date.RTC_Year = (uint8_t)(cdate.year - 2000);
-  date.RTC_WeekDay = (uint8_t)(cdate.dow + 1);
+  date.RTC_Date = (uint8_t)cdate.day; // 1..31 -> 1..31
+  date.RTC_Month = (uint8_t)(cdate.month+1); // 0..11 -> 1..12
+  date.RTC_Year = (uint8_t)(cdate.year - 2000); //  2000..2099 -> 0..99
+  if (date.RTC_Year>99) date.RTC_Year=0; // overflow
+  date.RTC_WeekDay = (uint8_t)(cdate.dow); // 0(sunday)..6 -> 1(monday)..7
+  if (date.RTC_WeekDay==0) date.RTC_WeekDay=7; // 1-based
 
   time.RTC_Seconds = (uint8_t)ctime.sec;
   time.RTC_Minutes = (uint8_t)ctime.min;
@@ -1980,8 +2006,12 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
   assert(DEVICE_IS_USART(device));
 
   jshSetDeviceInitialised(device, true);
-
+  if (!DEVICE_IS_USART(device)) return;
+#ifdef USB
+  if (device==EV_USBSERIAL) return;
+#endif
   jshSetFlowControlEnabled(device, inf->xOnXOff, inf->pinCTS);
+  jshSetErrorHandlingEnabled(device, inf->errorHandling);
 
   JshPinFunction funcType = jshGetPinFunctionFromDevice(device);
   if (funcType==0) return; // not a proper serial port, ignore it
@@ -2032,11 +2062,11 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
   // USART_ReceiveData(USART1) & 0x7F; for the 7-bit case and
   // USART_ReceiveData(USART1) & 0xFF; for the 8-bit case
   // the register is 9-bits long.
+  jshSetIsSerial7Bit(device, inf->bytesize == 7);
 
   if((inf->bytesize == 7 && inf->parity > 0) || (inf->bytesize == 8 && inf->parity == 0)) {
     USART_InitStructure.USART_WordLength = USART_WordLength_8b;
-  }
-  else if((inf->bytesize == 8 && inf->parity > 0) || (inf->bytesize == 9 && inf->parity == 0)) {
+  }   else if((inf->bytesize == 8 && inf->parity > 0) || (inf->bytesize == 9 && inf->parity == 0)) {
     USART_InitStructure.USART_WordLength = USART_WordLength_9b;
   }
   else {
@@ -2313,7 +2343,7 @@ void jshI2CWrite(IOEventFlags device, unsigned char address, int nBytes, const u
   I2C_ClearFlag(I2C, I2C_FLAG_STOPF);
   if (I2C_GetFlagStatus(I2C, I2C_FLAG_NACKF) != RESET) {
     I2C_ClearFlag(I2C, I2C_FLAG_NACKF);
-    jsWarn("I2C got NACK");
+    jsExceptionHere(JSET_INTERNALERROR, "I2C got NACK");
   }
 #else
   WAIT_UNTIL(!I2C_GetFlagStatus(I2C, I2C_FLAG_BUSY), "I2C Write BUSY");
@@ -2351,7 +2381,7 @@ void jshI2CRead(IOEventFlags device, unsigned char address, int nBytes, unsigned
   I2C_ClearFlag(I2C, I2C_FLAG_STOPF);
   if (I2C_GetFlagStatus(I2C, I2C_FLAG_NACKF) != RESET) {
     I2C_ClearFlag(I2C, I2C_FLAG_NACKF);
-    jsWarn("I2C got NACK");
+    jsExceptionHere(JSET_INTERNALERROR,"I2C got NACK");
   }
 #else
   I2C_GenerateSTART(I2C, ENABLE);
@@ -2417,7 +2447,7 @@ bool jshSleep(JsSysTime timeUntilWake) {
        What about EXTI line 18 - USB Wakeup event
        Check time until wake against where we are in the RTC counter - we can sleep for 0.1 sec if we're 90% of the way through the counter...
    */
-  if ((jsiStatus & JSIS_ALLOW_DEEP_SLEEP) &&  // from setDeepSleep
+  if (jsfGetFlag(JSF_DEEP_SLEEP) &&  // from setDeepSleep
 #ifdef STM32F1
       (timeUntilWake > (jshGetTimeForSecond()*3/2)) &&  // if there's less time that this then we can't go to sleep because we can't be sure we'll wake in time
 #else
@@ -2916,6 +2946,9 @@ void jshFlashWrite(void *buf, uint32_t addr, uint32_t len) {
 #endif
 }
 
+// Just pass data through, since we can access flash at the same address we wrote it
+size_t jshFlashGetMemMapAddress(size_t ptr) { return ptr; }
+
 int jshSetSystemClockPClk(JsVar *options, const char *clkName) {
   JsVar *v = jsvObjectGetChild(options, clkName, 0);
   JsVarInt i = jsvGetIntegerAndUnLock(v);
@@ -2992,3 +3025,7 @@ unsigned int jshSetSystemClock(JsVar *options) {
 #endif
 }
 
+/// Perform a proper hard-reboot of the device
+void jshReboot() {
+  NVIC_SystemReset();
+}

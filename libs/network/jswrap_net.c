@@ -15,6 +15,8 @@
  */
 #include "jswrap_net.h"
 #include "jsvariterator.h"
+#include "jsinteractive.h"
+#include "jsparse.h"
 #include "socketserver.h"
 #include "network.h"
 
@@ -374,7 +376,7 @@ JsVar *jswrap_net_createServer(JsVar *callback) {
   "return" : ["JsVar","Returns a new net.Socket object"],
   "return_object" : "Socket"
 }
-Create a socket connection
+Create a TCP socket connection
 */
 JsVar *jswrap_net_connect(JsVar *options, JsVar *callback, SocketType socketType) {
   bool unlockOptions = false;
@@ -402,19 +404,199 @@ JsVar *jswrap_net_connect(JsVar *options, JsVar *callback, SocketType socketType
     return 0;
   }
 
+  if ((socketType&ST_TYPE_MASK) == ST_UDP) {
+    JsNetwork net;
+    if (networkGetFromVar(&net)) {
+      int recvBufferSize = jsvGetIntegerAndUnLock(jsvObjectGetChild(options, "recvBufferSize", 0));
+      if (recvBufferSize > net.data.recvBufferSize) {
+        net.data.recvBufferSize = recvBufferSize;
+        networkSet(&net);
+      }
+      networkFree(&net);
+    }
+  }
+
   JsVar *rq = clientRequestNew(socketType, options, callback);
   if (unlockOptions) jsvUnLock(options);
 
-  if ((socketType&ST_TYPE_MASK) != ST_HTTP) {
+  if ((socketType&ST_TYPE_MASK) == ST_NORMAL) {
     JsNetwork net;
     if (networkGetFromVarIfOnline(&net)) {
       clientRequestConnect(&net, rq);
+      networkFree(&net);
     }
-    networkFree(&net);
   }
 
   return rq;
 }
+
+/*JSON{
+  "type" : "library",
+  "class" : "dgram"
+}
+This library allows you to create UDP/DATAGRAM servers and clients
+
+In order to use this, you will need an extra module to get network connectivity.
+
+This is designed to be a cut-down version of the [node.js library](http://nodejs.org/api/dgram.html). Please see the [Internet](/Internet) page for more information on how to use it.
+*/
+
+/*JSON{
+  "type" : "staticmethod",
+  "class" : "dgram",
+  "name" : "createSocket",
+  "generate_full" : "jswrap_dgram_createSocket(type, callback)",
+  "params" : [
+    ["type","JsVar","Socket type to create e.g. 'udp4'. Or options object { type: 'udp4', reuseAddr: true, recvBufferSize: 1024 }"],
+    ["callback","JsVar","A `function(sckt)` that will be called  with the socket when a connection is made. You can then call `sckt.send(...)` to send data, and `sckt.on('message', function(data) { ... })` and `sckt.on('close', function() { ... })` to deal with the response."]
+  ],
+  "return" : ["JsVar","Returns a new dgram.Socket object"],
+  "return_object" : "dgramSocket"
+}
+Create a UDP socket
+*/
+JsVar *jswrap_dgram_createSocket(JsVar *type, JsVar *callback) {
+  NOT_USED(type);
+  JsVar *options = jsvIsObject(type) ? type : jsvNewObject();
+  JsVar *connection = jswrap_net_connect(options, callback, ST_UDP);
+  if (options != type) jsvUnLock(options);
+  return connection;
+}
+
+/*JSON{
+  "type" : "class",
+  "library" : "dgram",
+  "class" : "dgramSocket"
+}
+An actual socket connection - allowing transmit/receive of TCP data
+*/
+/*JSON{
+  "type" : "method",
+  "class" : "dgramSocket",
+  "name" : "send",
+  "generate" : "jswrap_dgram_socket_send",
+  "params" : [
+    ["buffer","JsVar","A string containing message to send"],
+    ["offset","JsVar","Offset in the passed string where the message starts [optional]"],
+    ["length","JsVar","Number of bytes in the message [optional]"],
+    ["args","JsVarArray","Destination port number, Destination IP address string"]
+  ]
+}*/
+// There are futher arguments within the 'args' JsVarArray:
+//  ["port","JsVar","Destination port number to send the message to"],
+//  ["address","JsVar","Destination hostname or IP address string"]
+void jswrap_dgram_socket_send(JsVar *parent, JsVar *buffer, JsVar *offset, JsVar *length, JsVar *args) {
+  assert(jsvIsObject(parent));
+  assert(jsvIsString(buffer));
+  JsNetwork net;
+  if (!networkGetFromVarIfOnline(&net)) return;
+
+  JsVar *msg;
+  JsVar *address;
+  JsVar *port = jsvGetArrayItem(args, 0);
+  if (jsvIsNumeric(port)) {
+    int from = jsvGetInteger(offset);
+    int count = jsvGetInteger(length);
+    msg = jsvNewFromEmptyString();
+    if (!msg) {
+      networkFree(&net);
+      return; // out of memory
+    }
+    jsvAppendStringVar(msg, buffer, (size_t)from, (size_t)count);
+    address = jsvGetArrayItem(args, 1);
+  } else {
+    jsvUnLock(port);
+
+    msg = buffer;
+    port = offset;
+    address = length;
+    assert(jsvIsNumeric(port));
+  }
+  clientRequestWrite(&net, parent, msg, address, (unsigned short)jsvGetInteger(port));
+  if (msg != buffer) {
+    jsvUnLock3(msg, port, address);
+  }
+  networkFree(&net);
+}
+
+/*JSON{
+  "type" : "event",
+  "class" : "dgramSocket",
+  "name" : "message",
+  "params" : [
+    ["msg","JsVar","A string containing the received message"],
+    ["rinfo","JsVar","Sender address,port containing information"]
+  ]
+}
+The 'message' event is called when a datagram message is received. If a handler is defined with `X.on('message', function(msg) { ... })` then it will be called`
+*/
+
+/*JSON{
+  "type" : "method",
+  "class" : "dgramSocket",
+  "name" : "bind",
+  "generate" : "jswrap_dgramSocket_bind",
+  "params" : [
+    ["port","int32","The port to bind at"],
+    ["callback","JsVar","A function(res) that will be called when the socket is bound. You can then call `res.on('message', function(message, info) { ... })` and `res.on('close', function() { ... })` to deal with the response."]
+  ],
+  "return" : ["JsVar","The dgramSocket instance that 'bind' was called on"]
+}
+*/
+JsVar *jswrap_dgramSocket_bind(JsVar *parent, unsigned short port, JsVar *callback) {
+  parent = jsvLockAgain(parent); // we're returning the parent, so need to re-lock it
+
+  jsvObjectSetChild(parent, DGRAM_ON_BIND_NAME, callback);
+  jsvUnLock(jswrap_net_server_listen(parent, port, ST_UDP)); // create bound socket
+  jsiQueueObjectCallbacks(parent, DGRAM_ON_BIND_NAME, &parent, 1);
+
+  return parent;
+}
+
+/*JSON{
+  "type" : "method",
+  "class" : "dgramSocket",
+  "name" : "close",
+  "generate" : "jswrap_dgram_close"
+}
+Close the socket
+*/
+void jswrap_dgram_close(JsVar *parent) {
+  JsNetwork net;
+  if (!networkGetFromVarIfOnline(&net)) return;
+
+  clientRequestEnd(&net, parent);
+  networkFree(&net);
+}
+
+/*JSON{
+  "type" : "method",
+  "class" : "dgramSocket",
+  "name" : "addMembership",
+  "generate" : "jswrap_dgram_addMembership",
+  "params" : [
+    ["group","JsVar","A string containing the group ip to join"],
+    ["ip","JsVar","A string containing the ip to join with"]
+  ]
+}
+*/
+void jswrap_dgram_addMembership(JsVar *parent, JsVar *group, JsVar *ip) {
+  JsNetwork net;
+  if (!networkGetFromVarIfOnline(&net)) return;
+
+  serverAddMembership(&net, parent, group, ip);
+}
+
+/*JSON{
+  "type" : "event",
+  "class" : "dgramSocket",
+  "name" : "close",
+  "params" : [
+    ["had_error","JsVar","A boolean indicating whether the connection had an error (use an error event handler to get error details)."]
+  ]
+}
+Called when the connection closes.
+*/
 
 
 // ---------------------------------------------------------------------------------
@@ -481,20 +663,23 @@ https://engineering.circle.com/https-authorized-certs-with-node-js/
   "type" : "method",
   "class" : "Server",
   "name" : "listen",
-  "generate" : "jswrap_net_server_listen",
+  "generate_full" : "jswrap_net_server_listen(parent, port, ST_NORMAL)",
   "params" : [
     ["port","int32","The port to listen on"]
-  ]
+  ],
+  "return" : ["JsVar","The HTTP server instance that 'listen' was called on"]
 }
 Start listening for new connections on the given port
 */
 
-void jswrap_net_server_listen(JsVar *parent, int port) {
+JsVar *jswrap_net_server_listen(JsVar *parent, int port, SocketType socketType) {
+  parent = jsvLockAgain(parent); // we're returning the parent, so need to re-lock it
   JsNetwork net;
-  if (!networkGetFromVarIfOnline(&net)) return;
+  if (!networkGetFromVarIfOnline(&net)) return parent;
 
-  serverListen(&net, parent, port);
+  serverListen(&net, parent, (unsigned short)port, socketType);
   networkFree(&net);
+  return parent;
 }
 
 /*JSON{
@@ -526,7 +711,7 @@ void jswrap_net_server_close(JsVar *parent) {
   "params" : [
     ["data","JsVar","A string containing data to send"]
   ],
-  "return" : ["bool","For note compatibility, the boolean false. When the send buffer is empty, a `drain` event will be sent"]
+  "return" : ["bool","For node.js compatibility, returns the boolean false. When the send buffer is empty, a `drain` event will be sent"]
 }
 This function writes the `data` argument as a string. Data that is passed in
 (including arrays) will be converted to a string with the normal JavaScript 
@@ -554,7 +739,7 @@ socket.write(E.toString(d.buffer))
 bool jswrap_net_socket_write(JsVar *parent, JsVar *data) {
   JsNetwork net;
   if (!networkGetFromVarIfOnline(&net)) return false;
-  clientRequestWrite(&net, parent, data);
+  clientRequestWrite(&net, parent, data, NULL, 0);
   networkFree(&net);
   return false;
 }

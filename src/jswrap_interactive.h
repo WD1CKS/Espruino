@@ -13,11 +13,14 @@
  */
 #include "jsvar.h"
 #include "jsinteractive.h"
+#include "jsflash.h"
+
 
 void jswrap_interface_setBusyIndicator(JsVar *pinVar);
 void jswrap_interface_setSleepIndicator(JsVar *pinVar);
 void jswrap_interface_setDeepSleep(bool sleep);
 void jswrap_interface_trace(JsVar *root);
+void jswrap_interface_reset(bool clearFlash);
 void jswrap_interface_print(JsVar *v);
 void jswrap_interface_edit(JsVar *funcName);
 void jswrap_interface_echo(bool echoOn);

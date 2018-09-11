@@ -24,6 +24,9 @@
 #ifdef ESP32
 #include "esp32_neopixel.h"
 #endif
+#ifdef WIO_LTE
+#include "stm32_ws2812b_driver.h"
+#endif
 
 #include <jswrap_neopixel.h>
 #include "jsvariterator.h"
@@ -122,7 +125,13 @@ void jswrap_neopixel_write(Pin pin, JsVar *data) {
 // -------------------------------------------------------------- Platform specific
 // -----------------------------------------------------------------------------------
 
-#if defined(STM32) // ----------------------------------------------------------------
+#if defined(WIO_LTE)
+
+bool neopixelWrite(Pin pin, unsigned char *rgbData, size_t rgbSize) {
+  return stm32_neopixelWrite(pin, rgbData, rgbSize);
+}
+
+#elif defined(STM32) // ----------------------------------------------------------------
 
 // this one could potentially work on other platforms as well...
 bool neopixelWrite(Pin pin, unsigned char *rgbData, size_t rgbSize) {
@@ -153,7 +162,9 @@ bool neopixelWrite(Pin pin, unsigned char *rgbData, size_t rgbSize) {
   jshSPISetReceive(device, false);
   jshInterruptOff();
   for (i=0;i<rgbSize;i++)
-    jsspiSend4bit(device, rgbData[i], 1, 3);
+    jsspiSend4bit(device, rgbData[i], 8, 12);
+  // make sure all useful data has been flushed from 32-bit fifo
+  jsspiSend4bit(device, 0, 0, 0);
   jshInterruptOn();
   jshSPIWait(device); // wait until SPI send finished and clear the RX buffer
   jshSPISet16(device, false); // back to 8 bit

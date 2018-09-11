@@ -13,7 +13,7 @@
 # ----------------------------------------------------------------------------------------
 
 cd `dirname $0`
-cd ..
+cd .. # Espruino
 
 VERSION=`sed -ne "s/^.*JS_VERSION.*\"\(.*\)\"/\1/p" src/jsutils.h | head -1`
 echo "VERSION $VERSION"
@@ -24,26 +24,37 @@ rm -rf $ZIPDIR
 mkdir $ZIPDIR
 
 
-# ESP8266
-export ESP8266_SDK_ROOT=$DIR/esp_iot_sdk_v2.0.0.p1
-export PATH=$PATH:$DIR/xtensa-lx106-elf/bin/
+# Setup ESP8266
+#export ESP8266_SDK_ROOT=$DIR/esp_iot_sdk_v2.0.0.p1
+#export PATH=$PATH:$DIR/xtensa-lx106-elf/bin/
+rm -rf esp_iot_sdk_v2.0.0*
+rm -rf xtensa-lx106-elf
+source scripts/provision.sh ESP8266_BOARD
 # ESP32
-export ESP_IDF_PATH=$DIR/esp-idf
-export ESP_APP_TEMPLATE_PATH=$DIR/app
-export PATH=$PATH:$DIR/xtensa-esp32-elf/bin/
+#export ESP_IDF_PATH=$DIR/esp-idf
+#export ESP_APP_TEMPLATE_PATH=$DIR/app
+#export PATH=$PATH:$DIR/xtensa-esp32-elf/bin/
+rm -rf esp-idf
+rm -rf app
+rm -rf xtensa-esp32-elf
+source scripts/provision.sh ESP32
 
 
 
 echo ------------------------------------------------------
 echo                          Building Version $VERSION
 echo ------------------------------------------------------
-for BOARDNAME in PICO_1V3_CC3000 PICO_1V3_WIZ ESPRUINO_1V3 ESPRUINO_1V3_WIZ ESPRUINOWIFI PUCKJS NUCLEOF401RE NUCLEOF411RE STM32VLDISCOVERY STM32F3DISCOVERY STM32F4DISCOVERY OLIMEXINO_STM32 HYSTM32_24 HYSTM32_28 HYSTM32_32 RASPBERRYPI MICROBIT ESP8266_BOARD ESP8266_4MB RUUVITAG ESP32 
+for BOARDNAME in PICO_1V3_CC3000 PICO_1V3_WIZ ESPRUINO_1V3 ESPRUINO_1V3_WIZ ESPRUINOWIFI PUCKJS PIXLJS MDBT42Q NUCLEOF401RE NUCLEOF411RE STM32VLDISCOVERY STM32F4DISCOVERY STM32L496GDISCOVERY OLIMEXINO_STM32 HYSTM32_24 HYSTM32_28 HYSTM32_32 RASPBERRYPI MICROBIT ESP8266_BOARD ESP8266_4MB RUUVITAG ESP32 WIO_LTE NRF52832DK THINGY52 RAK8211 RAK8212
 do
   echo ------------------------------
   echo                  $BOARDNAME
   echo ------------------------------
   EXTRADEFS=
   EXTRANAME=
+  if [ "$BOARDNAME" == "ESPRUINO_1V3" ]; then
+    BOARDNAME=ESPRUINOBOARD
+    EXTRADEFS=CC3000=1
+  fi
   if [ "$BOARDNAME" == "ESPRUINO_1V3_WIZ" ]; then
     BOARDNAME=ESPRUINOBOARD
     EXTRADEFS=WIZNET=1
@@ -59,14 +70,14 @@ do
     EXTRADEFS=WIZNET=1
     EXTRANAME=_wiznet
   fi
-  BOARDNAMEX=$BOARDNAME
-  if [ "$BOARDNAME" == "ESPRUINO_1V3" ]; then
-    BOARDNAMEX=ESPRUINOBOARD
-    EXTRADEFS=CC3000=1
-  fi
+
   # actually build
-  ESP_BINARY_NAME=`python scripts/get_board_info.py $BOARDNAMEX "common.get_board_binary_name(board)"`
+  ESP_BINARY_NAME=`python scripts/get_board_info.py $BOARDNAME "common.get_board_binary_name(board)"`
   if [ "$BOARDNAME" == "PUCKJS" ]; then
+    ESP_BINARY_NAME=`basename $ESP_BINARY_NAME .hex`.zip
+    EXTRADEFS=DFU_UPDATE_BUILD=1
+  fi
+  if [ "$BOARDNAME" == "PIXLJS" ]; then
     ESP_BINARY_NAME=`basename $ESP_BINARY_NAME .hex`.zip
     EXTRADEFS=DFU_UPDATE_BUILD=1
   fi
@@ -78,7 +89,7 @@ do
   echo "Building $ESP_BINARY_NAME"
   echo
   rm -f $BINARY_NAME
-  if [ "$BOARDNAME" == "ESPRUINO_1V3" ]; then
+  if [ "$BOARDNAME" == "ESPRUINOBOARD" ]; then
     bash -c "$EXTRADEFS scripts/create_espruino_image_1v3.sh" || { echo "Build of $BOARDNAME failed" ; exit 1; }
   elif [ "$BOARDNAME" == "PICO_R1_3" ]; then
     bash -c "$EXTRADEFS scripts/create_pico_image_1v3.sh" || { echo "Build of $BOARDNAME failed" ; exit 1; }

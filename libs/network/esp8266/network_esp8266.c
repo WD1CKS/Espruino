@@ -19,7 +19,7 @@
 #include <c_types.h>
 #include <user_interface.h>
 #include <mem.h>
-#include <osapi.h>
+#include "osapi_release.h"
 #include <espconn.h>
 #include <espmissingincludes.h>
 
@@ -35,16 +35,17 @@ typedef long long int64_t;
 
 // Set NET_DBG to 0 to disable debug printf's, to 1 for important printf's
 #ifdef RELEASE
-#define NET_DBG 0
+  #define DBG(format, ...) do { } while(0)
 #else
-#define NET_DBG 1
-#endif
-// Normal debug
-#if NET_DBG > 0
-#define DBG(format, ...) os_printf(format, ## __VA_ARGS__)
-static char DBG_LIB[] = "net_esp8266"; // library name
-#else
-#define DBG(format, ...) do { } while(0)
+  // Normal debug
+  #if NET_DBG > 0
+    #define DBG(format, ...) os_printf(format, ## __VA_ARGS__)
+    // #include "jsinteractive.h"
+    // #define DBG(format, ...) jsiConsolePrintf(format, ## __VA_ARGS__)
+    static char DBG_LIB[] = "net_esp8266"; // library name
+  #else
+    #define DBG(format, ...) do { } while(0)
+  #endif
 #endif
 
 static struct socketData *getSocketData(int s);
@@ -134,6 +135,12 @@ struct socketData {
   PktBuf   *rxBufQ;           //!< Queue of received buffers
 
   short    errorCode;         //!< Error code, 0=no error
+
+  uint32_t        host;
+  unsigned short  port;
+
+  uint32_t  multicastGrpIp;
+  uint32_t  multicastIp;
 };
 
 
@@ -153,12 +160,15 @@ static bool g_socketsInitialized = false;
  * socket structures and dumps their state to the debug log.
  */
 void esp8266_dumpAllSocketData() {
+#ifndef RELEASE
   for (int i=0; i<MAX_SOCKETS; i++) {
     esp8266_dumpSocketData(&socketArray[i]);
   }
+#endif
 }
 
 
+#ifndef RELEASE
 /**
  * Write the details of a socket to the debug log.
  * The data associated with the socket is dumped to the debug log.
@@ -235,6 +245,7 @@ static void esp8266_dumpSocketData(
   }
   DBG("\n");
 }
+#endif
 
 
 /**
@@ -269,16 +280,16 @@ static void dumpEspConn(
     LOG(" - type = UDP\n");
     LOG("   - local_port  = %d\n", pEspConn->proto.udp->local_port);
     LOG("   - local_ip    = %d.%d.%d.%d\n",
-        pEspConn->proto.tcp->local_ip[0],
-        pEspConn->proto.tcp->local_ip[1],
-        pEspConn->proto.tcp->local_ip[2],
-        pEspConn->proto.tcp->local_ip[3]);
+        pEspConn->proto.udp->local_ip[0],
+        pEspConn->proto.udp->local_ip[1],
+        pEspConn->proto.udp->local_ip[2],
+        pEspConn->proto.udp->local_ip[3]);
     LOG("   - remote_port = %d\n", pEspConn->proto.udp->remote_port);
     LOG("   - remote_ip   = %d.%d.%d.%d\n",
-        pEspConn->proto.tcp->remote_ip[0],
-        pEspConn->proto.tcp->remote_ip[1],
-        pEspConn->proto.tcp->remote_ip[2],
-        pEspConn->proto.tcp->remote_ip[3]);
+        pEspConn->proto.udp->remote_ip[0],
+        pEspConn->proto.udp->remote_ip[1],
+        pEspConn->proto.udp->remote_ip[2],
+        pEspConn->proto.udp->remote_ip[3]);
     break;
   default:
     LOG(" - type = Unknown!! 0x%x\n", pEspConn->type);
@@ -545,8 +556,10 @@ static void esp8266_callback_connectCB_inbound(
   //dumpEspConn(pEspconn);
 
   // register callbacks on the new connection
-  espconn_regist_disconcb(pEspconn, esp8266_callback_disconnectCB);
-  espconn_regist_reconcb(pEspconn, esp8266_callback_reconnectCB);
+  if (pEspconn->type == ESPCONN_TCP) {
+    espconn_regist_disconcb(pEspconn, esp8266_callback_disconnectCB);
+    espconn_regist_reconcb(pEspconn, esp8266_callback_reconnectCB);
+  }
   espconn_regist_sentcb(pEspconn, esp8266_callback_sentCB);
   espconn_regist_recvcb(pEspconn, esp8266_callback_recvCB);
 
@@ -690,6 +703,12 @@ static void esp8266_callback_recvCB(
     return;
   }
 
+  bool isUDP = pEspconn->type == ESPCONN_UDP;
+  if (isUDP && len > 536/2 /*chunkSize*/) {
+    jsWarn("Recv %d too long (UDP)!\n", len);
+    return;
+  }
+
   // Allocate a buffer and add to the receive queue
   PktBuf *buf = PktBuf_New(len);
   if (!buf) {
@@ -706,6 +725,18 @@ static void esp8266_callback_recvCB(
     //DBG("%s: ret from recvCB\n", DBG_LIB);
     return;
   }
+
+  if (isUDP) {
+    // UDP remote host/port
+    remot_info *premot = NULL;
+    if (espconn_get_connection_info(pEspconn, &premot, 0) == ESPCONN_OK) {
+      pSocketData->host = *(uint32_t *)&premot->remote_ip;
+      pSocketData->port = *(unsigned short *)&premot->remote_port;
+    }
+  }
+
+  DBG("%s: Recv %d to %x:%d\n", DBG_LIB, len, pSocketData->host, pSocketData->port);
+
   // if this is the second buffer then stop the flood!
   if (pSocketData->rxBufQ != NULL) espconn_recv_hold(pEspconn);
   // got buffer, fill it
@@ -773,6 +804,7 @@ int net_ESP8266_BOARD_accept(
  */
 int net_ESP8266_BOARD_recv(
     JsNetwork *net, //!< The Network we are going to use to create the socket.
+    SocketType socketType, //!< The socket type bitmask
     int sckt,       //!< The socket from which we are to receive data.
     void *buf,      //!< The storage buffer into which we will receive data.
     size_t len      //!< The length of the buffer.
@@ -806,17 +838,31 @@ int net_ESP8266_BOARD_recv(
   }
   PktBuf *rxBuf = pSocketData->rxBufQ;
 
+  size_t delta = 0;
+  if (socketType & ST_UDP) {
+    JsNetUDPPacketHeader *header = (JsNetUDPPacketHeader*)buf;
+
+    delta = sizeof(JsNetUDPPacketHeader);
+    buf += delta;
+    len -= delta;
+
+    // UDP remote host/port
+    *(uint32_t*)&header->host = pSocketData->host;
+    header->port = pSocketData->port;
+    header->length = rxBuf->filled;
+  }
+
   // If the receive buffer is able to completely fit in the buffer
   // passed into us then we can copy all the data and the receive buffer will be clear.
   if (rxBuf->filled <= len) {
     os_memcpy(buf, rxBuf->data, rxBuf->filled);
-    int retLen = rxBuf->filled;
+    uint16_t retLen = rxBuf->filled;
     pSocketData->rxBufQ = PktBuf_ShiftFree(rxBuf);
     // if we now have exactly one buffer enqueued we need to re-enable the flood
     if (pSocketData->rxBufQ != NULL && pSocketData->rxBufQ->next == NULL)
       espconn_recv_unhold(pSocketData->pEspconn);
     //DBG("%s: socket %d JS recv %d\n", DBG_LIB, sckt, retLen);
-    return retLen;
+    return retLen + delta;
   }
 
   // If we are here, then we have more data in the receive buffer than is available
@@ -831,7 +877,7 @@ int net_ESP8266_BOARD_recv(
   os_memmove(rxBuf->data, rxBuf->data + len, newLen);
   rxBuf->filled = newLen;
   //DBG("%s: socket %d JS recv %d\n", DBG_LIB, sckt, len);
-  return len;
+  return len + delta;
 }
 
 
@@ -844,6 +890,7 @@ int net_ESP8266_BOARD_recv(
  */
 int net_ESP8266_BOARD_send(
     JsNetwork *net,  //!< The Network we are going to use to create the socket.
+    SocketType socketType, //!< The socket type bitmask
     int sckt,        //!< The socket over which we will send data.
     const void *buf, //!< The buffer containing the data to be sent.
     size_t len       //!< The length of data in the buffer to send.
@@ -851,6 +898,8 @@ int net_ESP8266_BOARD_send(
   //DBG("%s:send\n", DBG_LIB);
   struct socketData *pSocketData = getSocketData(sckt);
   assert(pSocketData->state != SOCKET_STATE_UNUSED);
+
+  DBG("%s:send state:%d err:%d\n", DBG_LIB, pSocketData->state, pSocketData->errorCode);
 
   // If the socket is in error or it is closing return -1
   switch (pSocketData->state) {
@@ -874,6 +923,19 @@ int net_ESP8266_BOARD_send(
   // Log the content of the data we are sending.
   //esp8266_board_writeString(buf, len);
   //os_printf("\n");
+  size_t delta = 0;
+  if (socketType & ST_UDP) {
+    JsNetUDPPacketHeader *header = (JsNetUDPPacketHeader*)buf;
+
+    // UDP remote IP/port need to be set everytime we call espconn_send
+    *(uint32_t *)&pSocketData->pEspconn->proto.tcp->remote_ip = *(uint32_t *)&header->host;
+    pSocketData->pEspconn->proto.tcp->remote_port = header->port;
+
+    delta = sizeof(JsNetUDPPacketHeader);
+    buf += delta;
+    len = header->length;
+    DBG("%s: Sendto %d to %x:%d\n", DBG_LIB, len, *(uint32_t *)&header->host, header->port);
+  }
 
   // Copy the data to be sent into a transmit buffer we hand off to espconn
   assert(pSocketData->currentTx == NULL);
@@ -887,6 +949,10 @@ int net_ESP8266_BOARD_send(
   }
   memcpy(pSocketData->currentTx, buf, len);
 
+  // Set transmitting now as the sentCB is called synchronously from inside
+  // espconn_send for UDP
+  pSocketData->state = SOCKET_STATE_TRANSMITTING;
+
   // Send the data over the ESP8266 SDK.
   int rc = espconn_send(pSocketData->pEspconn, pSocketData->currentTx, len);
   if (rc < 0) {
@@ -898,9 +964,8 @@ int net_ESP8266_BOARD_send(
     return rc;
   }
 
-  pSocketData->state = SOCKET_STATE_TRANSMITTING;
   //DBG("%s: socket %d JS send %d\n", DBG_LIB, sckt, len);
-  return len;
+  return len + delta;
 }
 
 
@@ -985,8 +1050,10 @@ static void dnsFoundCallback(const char *hostName, ip_addr_t *ipAddr, void *arg)
  */
 int net_ESP8266_BOARD_createSocket(
     JsNetwork *net,     //!< The Network we are going to use to create the socket.
+    SocketType socketType, //!< The socket type bitmask
     uint32_t ipAddress, //!< The address of the partner of the socket or 0 if we are to be a server.
-    unsigned short port //!< The port number that the partner is listening upon.
+    unsigned short port,//!< The port number that the partner is listening upon.
+    JsVar *options
 ) {
   // allocate a socket data structure
   struct socketData *pSocketData = allocateNewSocket();
@@ -997,6 +1064,7 @@ int net_ESP8266_BOARD_createSocket(
 
   // allocate espconn data structure and initialize it
   struct espconn *pEspconn = os_zalloc(sizeof(struct espconn));
+
   esp_tcp *tcp = os_zalloc(sizeof(esp_tcp));
   if (pEspconn == NULL || tcp == NULL) {
     DBG("%s: Out of memory for outbound connection\n", DBG_LIB);
@@ -1006,14 +1074,42 @@ int net_ESP8266_BOARD_createSocket(
     return SOCKET_ERR_MEM;
   }
 
+  if (socketType & ST_UDP) {
+    pEspconn->type    = ESPCONN_UDP;
+
+    // esp_tcp and esp_udp start identically (up to remote_ip)
+    // so we can leave the proto.tcp as an alias to proto.udp
+  } else {
+    pEspconn->type    = ESPCONN_TCP;
+
+    espconn_set_opt(pEspconn, ESPCONN_NODELAY); // disable nagle, don't need the extra delay
+  }
+
   pSocketData->pEspconn = pEspconn;
-  pEspconn->type      = ESPCONN_TCP;
   pEspconn->state     = ESPCONN_NONE;
   pEspconn->proto.tcp = tcp;
   tcp->remote_port    = port;
   tcp->local_port     = espconn_port(); // using 0 doesn't work
   pEspconn->reverse   = pSocketData;
-  espconn_set_opt(pEspconn, ESPCONN_NODELAY); // disable nagle, don't need the extra delay
+
+  // multicast support
+  // FIXME: perhaps extend the JsNetwork with addmembership/removemembership instead of using options
+  JsVar *mgrpVar = jsvObjectGetChild(options, "multicastGroup", 0);
+  if (mgrpVar) {
+      char ipStr[18];
+
+      jsvGetString(mgrpVar, ipStr, sizeof(ipStr));
+      jsvUnLock(mgrpVar);
+      uint32_t grpip = networkParseIPAddress(ipStr);
+
+      JsVar *ipVar = jsvObjectGetChild(options, "multicastIp", 0);
+      jsvGetString(ipVar, ipStr, sizeof(ipStr));
+      jsvUnLock(ipVar);
+      uint32_t ip = networkParseIPAddress(ipStr);
+
+      pSocketData->multicastGrpIp = grpip;
+      pSocketData->multicastIp = ip;
+  }
 
   if (ipAddress == (uint32_t)-1) {
     // We need DNS resolution, kick it off
@@ -1039,30 +1135,36 @@ static int connectSocket(
 ) {
   struct espconn *pEspconn = pSocketData->pEspconn;
   bool isServer = *(uint32_t *)&pEspconn->proto.tcp->remote_ip == 0;
+  int rc;
 
   int newSocket = pSocketData->socketId;
   assert(pSocketData->rxBufQ == NULL);
   assert(pSocketData->currentTx == NULL);
+
+  espconn_regist_sentcb(pEspconn, esp8266_callback_sentCB);
+  espconn_regist_recvcb(pEspconn, esp8266_callback_recvCB);
 
   // If we are a client
   if (!isServer) {
     pSocketData->state = SOCKET_STATE_CONNECTING;
     pSocketData->creationType = SOCKET_CREATED_OUTBOUND;
 
-    espconn_regist_connectcb(pEspconn, esp8266_callback_connectCB_outbound);
-    espconn_regist_disconcb(pEspconn, esp8266_callback_disconnectCB);
-    espconn_regist_reconcb(pEspconn, esp8266_callback_reconnectCB);
-    espconn_regist_sentcb(pEspconn, esp8266_callback_sentCB);
-    espconn_regist_recvcb(pEspconn, esp8266_callback_recvCB);
+    if (pEspconn->type == ESPCONN_TCP) {
+      espconn_regist_connectcb(pEspconn, esp8266_callback_connectCB_outbound);
+      espconn_regist_disconcb(pEspconn, esp8266_callback_disconnectCB);
+      espconn_regist_reconcb(pEspconn, esp8266_callback_reconnectCB);
 
-    // Make a call to espconn_connect.
+      // Make a call to espconn_connect.
 #if 0
-    DBG("%s: connecting socket %d/%p/%p to %d.%d.%d.%d:%d from :%d\n",
-        DBG_LIB, pSocketData->socketId, pSocketData, pEspconn,
-        IP2STR(pEspconn->proto.tcp->remote_ip), pEspconn->proto.tcp->remote_port,
-        pEspconn->proto.tcp->local_port);
+      DBG("%s: connecting socket %d/%p/%p to %d.%d.%d.%d:%d from :%d\n",
+          DBG_LIB, pSocketData->socketId, pSocketData, pEspconn,
+          IP2STR(pEspconn->proto.tcp->remote_ip), pEspconn->proto.tcp->remote_port,
+          pEspconn->proto.tcp->local_port);
 #endif
-    int rc = espconn_connect(pEspconn);
+      rc = espconn_connect(pEspconn);
+    } else {
+      rc = espconn_create(pEspconn);
+    }
     if (rc != 0) {
       DBG("%s: error %d connecting socket %d: %s\n", DBG_LIB,
           rc, pSocketData->socketId, esp8266_errorToString(rc));
@@ -1082,18 +1184,36 @@ static int connectSocket(
     pEspconn->proto.tcp->local_port = pEspconn->proto.tcp->remote_port;
     pEspconn->proto.tcp->remote_port = 0;
 
-    espconn_regist_connectcb(pEspconn, esp8266_callback_connectCB_inbound);
+    if (pEspconn->type == ESPCONN_TCP) {
+      espconn_regist_connectcb(pEspconn, esp8266_callback_connectCB_inbound);
 
-    // Make a call to espconn_accept (this should really be called espconn_listen, sigh)
-    int rc = espconn_accept(pEspconn);
-    if (rc != 0) {
-      DBG("%s: error %d creating listening socket %d: %s\n", DBG_LIB,
-          rc, pSocketData->socketId, esp8266_errorToString(rc));
-      releaseEspconn(pSocketData);
-      releaseSocket(pSocketData);
-      return rc;
+      // Make a call to espconn_accept (this should really be called espconn_listen, sigh)
+      rc = espconn_accept(pEspconn);
+      if (rc != 0) {
+        DBG("%s: error %d creating listening socket %d: %s\n", DBG_LIB,
+            rc, pSocketData->socketId, esp8266_errorToString(rc));
+        releaseEspconn(pSocketData);
+        releaseSocket(pSocketData);
+        return rc;
+      }
+      espconn_regist_time(pEspconn, 600, 0);
+    } else {
+      rc = espconn_create(pEspconn);
+      if (rc != 0) {
+        DBG("%s: error %d creating listening socket %d: %s\n", DBG_LIB,
+            rc, pSocketData->socketId, esp8266_errorToString(rc));
+        releaseEspconn(pSocketData);
+        releaseSocket(pSocketData);
+        return rc;
+      }
     }
-    espconn_regist_time(pEspconn, 600, 0);
+
+    if (pSocketData->multicastGrpIp) {
+      // multicast support
+      espconn_igmp_join((ip_addr_t *)&pSocketData->multicastIp,
+                        (ip_addr_t *)&pSocketData->multicastGrpIp);
+    }
+
     DBG("%s: listening socket %d on port %d\n", DBG_LIB,
         pSocketData->socketId, pEspconn->proto.tcp->local_port);
   }

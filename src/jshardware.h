@@ -94,6 +94,7 @@ JsVarFloat jshGetMillisecondsFromTime(JsSysTime time);
 // software IO functions...
 void jshInterruptOff(); ///< disable interrupts to allow short delays to be accurate
 void jshInterruptOn();  ///< re-enable interrupts
+bool jshIsInInterrupt(); ///< Are we currently in an interrupt?
 void jshDelayMicroseconds(int microsec);  ///< delay a few microseconds. Should use used sparingly and for very short periods - max 1ms
 
 void jshPinSetValue(Pin pin, bool value); ///< Set a digital output to 1 or 0. DOES NOT change pin state OR CHECK PIN VALIDITY
@@ -238,6 +239,7 @@ typedef struct {
   unsigned char parity;    ///< 0=none, 1=odd, 2=even
   unsigned char stopbits;  ///< 1 or 2
   bool xOnXOff;            ///< XON XOFF flow control?
+  bool errorHandling;      ///< Whether to forward parity/framing errors
 } PACKED_FLAGS JshUSARTInfo;
 
 /// Initialise a JshUSARTInfo struct to default settings
@@ -344,6 +346,12 @@ void jshFlashRead(void *buf, uint32_t addr, uint32_t len);
   * guaranteed to be 4-byte aligned, and length is a multiple of 4.  */
 void jshFlashWrite(void *buf, uint32_t addr, uint32_t len);
 
+/** On most platforms, the address of something really is that address.
+ * In ESP32/ESP8266 the flash memory is mapped up at a much higher address,
+ * so we need to tweak any pointers that we use.
+ * */
+size_t jshFlashGetMemMapAddress(size_t ptr);
+
 
 /** Utility timer handling functions
  *  ------------------------------------------
@@ -385,6 +393,8 @@ volatile uint32_t *jshGetPinAddress(Pin pin, JshGetPinAddressFlags flags);
 #if defined(NRF51) || defined(NRF52)
 /// Called when we have had an event that means we should execute JS
 extern void jshHadEvent();
+#else
+#define jshHadEvent() /* We should ensure we exit idle mode */
 #endif
 
 /// the temperature from the internal temperature sensor, in degrees C
@@ -403,6 +413,20 @@ unsigned int jshGetRandomNumber();
  * to match what gets implemented here. The return value is the clock
  * speed in Hz though. */
 unsigned int jshSetSystemClock(JsVar *options);
+
+/// Perform a proper hard-reboot of the device
+void jshReboot();
+
+#if JSH_PORTV_COUNT>0
+/// handler for virtual ports (eg. pins on an IO Expander). This should be defined for each type of board used
+void jshVirtualPinInitialise();
+/// handler for virtual ports (eg. pins on an IO Expander). This should be defined for each type of board used
+void jshVirtualPinSetValue(Pin pin, bool state);
+/// handler for virtual ports (eg. pins on an IO Expander). This should be defined for each type of board used
+bool jshVirtualPinGetValue(Pin pin);
+/// handler for virtual ports (eg. pins on an IO Expander). This should be defined for each type of board used
+void jshVirtualPinSetState(Pin pin, JshPinState state);
+#endif
 
 /** Hacky definition of wait cycles used for WAIT_UNTIL.
  * TODO: make this depend on known system clock speed? */

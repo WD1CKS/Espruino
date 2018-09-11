@@ -60,7 +60,6 @@ typedef struct {
   int          cliSock;          ///< active client socket, 0=none (actual socket numbers are 1 less than this, as 0 is a valid socket)
   char         txBuf[TX_CHUNK];  ///< transmit buffer
   uint16_t     txBufLen;         ///< number of chars in tx buffer
-  IOEventFlags oldConsole;       ///< device the console was stolen from
 } TelnetServer;
 
 static TelnetServer tnSrv;        ///< the telnet server, only one right now
@@ -181,7 +180,7 @@ bool jswrap_telnet_idle(void) {
 void telnetStart(JsNetwork *net) {
   // create the listening socket
   printf("tnSrv: creating...\n");
-  int sock = netCreateSocket(net, 0, PORT, NCF_NORMAL, NULL)+1;
+  int sock = netCreateSocket(net, ST_NORMAL, 0, PORT, NULL)+1;
   if (sock <= 0) {
     printf("tnSrv: cannot create listening socket\n");
     return;
@@ -193,9 +192,9 @@ void telnetStart(JsNetwork *net) {
 // Terminate the telnet console
 void telnetStop(JsNetwork *net) {
   printf("tnSrv: stopped sock=%d\n", tnSrv.sock);
-  if (tnSrv.cliSock > 0) netCloseSocket(net, tnSrv.cliSock-1);
+  if (tnSrv.cliSock > 0) netCloseSocket(net, ST_NORMAL, tnSrv.cliSock-1);
   tnSrv.cliSock = 0;
-  if (tnSrv.sock > 0) netCloseSocket(net, tnSrv.sock-1);
+  if (tnSrv.sock > 0) netCloseSocket(net, ST_NORMAL, tnSrv.sock-1);
   tnSrv.sock = 0;
 }
 
@@ -208,12 +207,11 @@ bool telnetAccept(JsNetwork *net) {
 
   // if we already have a client, then disconnect it
   if (tnSrv.cliSock > 0) {
-    netCloseSocket(net, tnSrv.cliSock-1);
+    netCloseSocket(net, ST_NORMAL, tnSrv.cliSock-1);
   }
   // if the console is not already telnet, then change it
   IOEventFlags console = jsiGetConsoleDevice();
   if (console != EV_TELNET) {
-    tnSrv.oldConsole = console;
     if (!jsiIsConsoleDeviceForced()) jsiSetConsoleDevice(EV_TELNET, false);
   }
 
@@ -226,14 +224,14 @@ bool telnetAccept(JsNetwork *net) {
 void telnetRelease(JsNetwork *net) {
   if (!(tnSrv.sock && tnSrv.cliSock)) return;
   printf("tnSrv: released console from sock %d\n", tnSrv.cliSock-1);
-  netCloseSocket(net, tnSrv.cliSock-1);
+  netCloseSocket(net, ST_NORMAL, tnSrv.cliSock-1);
   tnSrv.cliSock = 0;
   IOEventFlags console = jsiGetConsoleDevice();
   // only switch away from telnet if the current console is TELNET, this allows the current
   // console to be set to something else while connected via telnet and then not have it
   // switched again when disconnecting from telnet
   if (console == EV_TELNET && !jsiIsConsoleDeviceForced())
-    jsiSetConsoleDevice(tnSrv.oldConsole, false);
+    jsiSetConsoleDevice(jsiGetPreferredConsoleDevice(), false);
 }
 
 // Attempt to send buffer on an established client connection, returns true if it sent something
@@ -244,7 +242,7 @@ bool telnetSendBuf(JsNetwork *net) {
   if (tnSrv.txBufLen == 0) return false;
 
   // try to send the tx buffer
-  int sent = netSend(net, tnSrv.cliSock-1, tnSrv.txBuf, tnSrv.txBufLen);
+  int sent = netSend(net, ST_NORMAL, tnSrv.cliSock-1, tnSrv.txBuf, tnSrv.txBufLen);
   if (sent == tnSrv.txBufLen) {
     tnSrv.txBufLen = 0;
   } else if (sent > 0) {
@@ -288,8 +286,9 @@ void telnetSendChar(char ch) {
 bool telnetRecv(JsNetwork *net) {
   if (tnSrv.sock == 0 || tnSrv.cliSock == 0) return false;
 
-  char buff[256];
-  int r = netRecv(net, tnSrv.cliSock-1, buff, 256);
+  char buff[64];
+  if (!jshHasEventSpaceForChars(sizeof(buff))) return false;
+  int r = netRecv(net, ST_NORMAL, tnSrv.cliSock-1, buff, sizeof(buff));
   if (r > 0) {
     jshPushIOCharEvents(EV_TELNET, buff, (unsigned int)r);
   } else if (r < 0) {

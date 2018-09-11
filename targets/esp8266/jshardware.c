@@ -14,7 +14,7 @@
  * ----------------------------------------------------------------------------
  */
 #include <ets_sys.h>
-#include <osapi.h>
+#include "osapi_release.h"
 #include <os_type.h>
 #include <c_types.h>
 #include <user_interface.h>
@@ -222,6 +222,11 @@ int jshGetSerialNumber(unsigned char *data, int maxChars) {
 void jshInterruptOff() { ets_intr_lock(); }
 void jshInterruptOn()  { ets_intr_unlock(); }
 
+/// Are we currently in an interrupt?
+bool jshIsInInterrupt() {
+  return false; // FIXME
+}
+
 /// Enter simple sleep mode (can be woken up by interrupts). Returns true on success
 bool jshSleep(JsSysTime timeUntilWake) {
   int time = (int) timeUntilWake;
@@ -358,6 +363,39 @@ void jshPinSetState(
     Pin pin,                 //!< The pin to have its state changed.
     JshPinState state        //!< The new desired state of the pin.
   ) {
+  
+  os_printf("> ESP8266: jshPinSetState state: %s\n",pinStateToString(state));
+  /* reject analog port */
+  if ((pinInfo[pin].port & JSH_PORT_MASK) == JSH_PORTA) { 
+    return ;
+  }
+  /* handle D16 */
+  if (pin == 16) {
+    switch(state){
+      case JSHPINSTATE_GPIO_OUT:
+        // mux configuration for XPD_DCDC to output rtc_gpio0
+        WRITE_PERI_REG(PAD_XPD_DCDC_CONF, (READ_PERI_REG(PAD_XPD_DCDC_CONF) & 0xffffffbc) | (uint32)0x1);  
+        //mux configuration for out enable
+        WRITE_PERI_REG(RTC_GPIO_CONF,(READ_PERI_REG(RTC_GPIO_CONF) & (uint32)0xfffffffe) | (uint32)0x0);
+        //out enable
+        WRITE_PERI_REG(RTC_GPIO_ENABLE,(READ_PERI_REG(RTC_GPIO_ENABLE) & (uint32)0xfffffffe) | (uint32)0x1);
+        break;
+      case JSHPINSTATE_GPIO_IN:
+        // mux configuration for XPD_DCDC and rtc_gpio0 connection
+        WRITE_PERI_REG(PAD_XPD_DCDC_CONF,(READ_PERI_REG(PAD_XPD_DCDC_CONF) & 0xffffffbc) | (uint32)0x1);             
+        //mux configuration for out enable
+        WRITE_PERI_REG(RTC_GPIO_CONF,(READ_PERI_REG(RTC_GPIO_CONF) & (uint32)0xfffffffe) | (uint32)0x0);
+        //out disable
+        WRITE_PERI_REG(RTC_GPIO_ENABLE,READ_PERI_REG(RTC_GPIO_ENABLE) & (uint32)0xfffffffe);             
+        break;
+      default:
+        jsError("only output and input are valid for D16");
+        return;
+     }
+     g_pinState[pin] = state;
+     return;
+  } 
+
   /* Make sure we kill software PWM if we set the pin state
    * after we've started it */
   if (BITFIELD_GET(jshPinSoftPWM, pin)) {
@@ -435,10 +473,22 @@ JshPinState jshPinGetState(Pin pin) {
     os_printf("> ESP8266: pin %d, pinState %d, reg_read %d, out_addr: %d input get %d\n", 
       pin, g_pinState[pin], (GPIO_REG_READ(GPIO_OUT_W1TS_ADDRESS)>>pin)&1,
       (GPIO_REG_READ(GPIO_OUT_ADDRESS)>>pin)&1, GPIO_INPUT_GET(pin));
-  */
-  if ( (GPIO_REG_READ(GPIO_OUT_ADDRESS)>>pin)&1 ) 
-    return g_pinState[pin] | JSHPINSTATE_PIN_IS_ON;
-  return g_pinState[pin];
+  */  
+  /* reject non digital ports */
+  if ((pinInfo[pin].port & JSH_PORT_MASK) == JSH_PORTA) { 
+    return JSHPINSTATE_ADC_IN;
+  }
+  int rc = g_pinState[pin];
+  if (pin == 16) {
+    if ((uint8)(READ_PERI_REG(RTC_GPIO_IN_DATA) & 1) &1) {
+       rc = g_pinState[pin] | JSHPINSTATE_PIN_IS_ON;
+    } 
+  } else {
+    if ( (GPIO_REG_READ(GPIO_OUT_ADDRESS)>>pin)&1 ) {
+      rc = g_pinState[pin] | JSHPINSTATE_PIN_IS_ON;
+    } 
+  }
+  return rc;
 }
 
 //===== GPIO and PIN stuff =====
@@ -451,8 +501,21 @@ void jshPinSetValue(
     bool value //!< The new value of the pin.
   ) {
   //os_printf("> ESP8266: jshPinSetValue pin=%d, value=%d\n", pin, value);
-  if (value & 1) GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1<<pin);
-  else           GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1<<pin);
+  /* reject non digital ports */
+  if ((pinInfo[pin].port & JSH_PORT_MASK) != JSH_PORTD) { 
+    return;
+  }
+  /* handle GPIO16 */
+  if (pin == 16) {
+    WRITE_PERI_REG(RTC_GPIO_OUT,(READ_PERI_REG(RTC_GPIO_OUT) & (uint32)0xfffffffe) | (uint32)(value & 1));
+  } else {
+    if (value & 1) { 
+      GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1<<pin);
+    } else {
+      GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1<<pin);
+    }
+  }
+  return;
   //jshDebugPin(pin);
 }
 
@@ -464,19 +527,35 @@ void jshPinSetValue(
 bool CALLED_FROM_INTERRUPT jshPinGetValue( // can be called at interrupt time
     Pin pin //!< The pin to have its value read.
   ) {
-  //os_printf("> ESP8266: jshPinGetValue pin=%d, value=%d\n", pin, GPIO_INPUT_GET(pin));
-  return GPIO_INPUT_GET(pin);
-}
 
+  if ((pinInfo[pin].port & JSH_PORT_MASK) == JSH_PORTA) { 
+    return false;
+  }
+  /* handle D16 */
+  if (pin == 16) {
+    return (READ_PERI_REG(RTC_GPIO_IN_DATA) & 1);
+  } else {
+    return GPIO_INPUT_GET(pin);
+  }
+}
 
 JsVarFloat jshPinAnalog(Pin pin) {
   //os_printf("> ESP8266: jshPinAnalog: pin=%d\n", pin);
-  return (JsVarFloat)system_adc_read() / 1023.0;
+
+  if ( pin == 255 || ( pinInfo[pin].port & JSH_PORT_MASK) == JSH_PORTA ) {
+    return (JsVarFloat)system_adc_read() / 1024.0;    
+  } else {
+   return NAN;
+  }
 }
 
 int jshPinAnalogFast(Pin pin) {
   //os_printf("> ESP8266: jshPinAnalogFast: pin=%d\n", pin);
-  return (int)system_adc_read() << 6; // left-align to 16 bits
+  if ( pin == 255 || ( pinInfo[pin].port & JSH_PORT_MASK) == JSH_PORTA ) {	
+    return (int)system_adc_read() << 6; // left-align to 16 bits
+  } else {
+   return 0;
+  }	  
 }
 
 
@@ -641,11 +720,17 @@ bool jshCanWatch(
     Pin pin //!< The pin that we are asking whether or not we can watch it.
   ) {
   // As of right now, let us assume that all pins on an ESP8266 are watchable.
-  os_printf("> jshCanWatch: pin=%d\n", pin);
-  os_printf("< jshCanWatch = true\n");
-  return true;
+  bool rc;
+  //os_printf("> jshCanWatch: pin=%d\n", pin);
+  // exclude pin 16
+  if ( pin == 16 ) {
+    rc = false;
+  } else {
+    rc = true;
+  }
+  //os_printf("< jshCanWatch = %d (0:false,1:true)\n",rc);
+  return rc;
 }
-
 
 /**
  * Do what ever is necessary to watch a pin.
@@ -709,7 +794,12 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
   if (device == EV_SERIAL1) uart_no = UART0;
   else if (device == EV_SERIAL2) uart_no = UART1;
   else {
-    jsError("jshUSARTSetup Unknown device %d\n", device);
+    jsExceptionHere(JSET_ERROR, "jshUSARTSetup Unknown device %d\n", device);
+    return;
+  }
+  
+  if (inf->errorHandling) {
+    jsExceptionHere(JSET_ERROR, "ESP8266 Espruino builds can't handle framing/parity errors (errors:true)");
     return;
   }
 
@@ -1197,15 +1287,15 @@ void jshFlashRead(
 	  uint8_t *dest = buf;
 	  uint32_t bytes = *(uint32_t*)(addr & ~3);
 	  while (len-- > 0) {
-		if ((addr & 3) == 0) bytes = *(uint32_t*)addr;
-		*dest++ = ((uint8_t*)&bytes)[addr++ & 3];
+		  if ((addr & 3) == 0) bytes = *(uint32_t*)addr;
+		  *dest++ = ((uint8_t*)&bytes)[addr++ & 3];
 	  }
-   } else { // Above 1Mb read...
-	//os_printf("jshFlashRead: above 1mb!");
-	SpiFlashOpResult res;
-	res = spi_flash_read(addr, buf, len);
-    if (res != SPI_FLASH_RESULT_OK)
-      os_printf("ESP8266: jshFlashRead %s\n",
+  } else { // Above 1Mb read...
+    //os_printf("jshFlashRead: above 1mb!");
+    SpiFlashOpResult res;
+    res = spi_flash_read(addr, buf, len);
+      if (res != SPI_FLASH_RESULT_OK)
+        os_printf("ESP8266: jshFlashRead %s\n",
     res == SPI_FLASH_RESULT_ERR ? "error" : "timeout");
    }
 }
@@ -1229,9 +1319,25 @@ void jshFlashWrite(
   if (addr >= flash_max) return;
   if (addr + len > flash_max) len = flash_max - addr;
 
-  // since things are guaranteed to be aligned we can just call the SDK :-)
-  SpiFlashOpResult res;
-  res = spi_flash_write(addr, buf, len);
+  SpiFlashOpResult res = SPI_FLASH_RESULT_OK;
+  /* so about that alignment... Turns out it matters
+  about `buf` too */
+  if (((size_t)(char*)buf)&3) {
+    /* Unaligned *SOURCE* is a problem on ESP8266,
+     * so if so we are unaligned, do a whole bunch
+     * of tiny writes via a buffer */
+    while (len>=4 && res == SPI_FLASH_RESULT_OK) {
+      uint32_t alignedBuf;
+      memcpy(&alignedBuf, buf, 4);
+      res = spi_flash_write(addr, &alignedBuf, 4);
+      len -= 4;
+      addr += 4;
+      buf = (void*)(4+(char*)buf);
+    }
+  } else {
+    // since things are *now* guaranteed to be aligned we can just call the SDK :-)
+    res = spi_flash_write(addr, buf, len);
+  }
   if (res != SPI_FLASH_RESULT_OK)
     os_printf("ESP8266: jshFlashWrite %s\n",
       res == SPI_FLASH_RESULT_ERR ? "error" : "timeout");
@@ -1273,12 +1379,9 @@ JsVar *jshFlashGetFree() {
     addFlashArea(jsFreeFlash, 0x300000, 0x40000);
     addFlashArea(jsFreeFlash, 0x340000, 0x40000);
     addFlashArea(jsFreeFlash, 0x380000, 0x40000);
-    addFlashArea(jsFreeFlash, 0x3C0000, 0x40000-0x15000);
+    addFlashArea(jsFreeFlash, 0x3C0000, 0x40000-0x5000);
     return jsFreeFlash;
   }
-
-  // Area reserved for EEPROM
-  addFlashArea(jsFreeFlash, 0x77000, 0x1000);
 
   // need 1MB of flash to have more space...
   extern uint16_t espFlashKB; // in user_main,c
@@ -1290,10 +1393,10 @@ JsVar *jshFlashGetFree() {
 	  addFlashArea(jsFreeFlash, 0xf7000, 0x5000);
     }
 	if (espFlashKB == 2048) {
-	  addFlashArea(jsFreeFlash, 0x100000, 0x100000-0x4000);
+	  addFlashArea(jsFreeFlash, 0x100000, 0x100000-0x5000);
     }
 	if (espFlashKB == 4096) {
-	  addFlashArea(jsFreeFlash, 0x100000, 0x300000-0x4000);
+	  addFlashArea(jsFreeFlash, 0x100000, 0x300000-0x5000);
     }
   }
 
@@ -1316,6 +1419,14 @@ void jshFlashErasePage(
       res == SPI_FLASH_RESULT_ERR ? "error" : "timeout");
 }
 
+size_t jshFlashGetMemMapAddress(size_t ptr) {
+  // the flash address is just the offset into the flash chip, but to evaluate the code
+  // below we need to jump to the memory-mapped window onto flash, so adjust here
+  if (ptr < FLASH_MAX)
+    return ptr + FLASH_MMAP;
+  return ptr;
+}
+
 unsigned int jshSetSystemClock(JsVar *options) {
   int newFreq = jsvGetInteger(options);
   if (newFreq != 80 && newFreq != 160) {
@@ -1334,3 +1445,9 @@ unsigned int jshSetSystemClock(JsVar *options) {
 void _exit(int status) {
 }
 
+/// Perform a proper hard-reboot of the device
+void jshReboot() {
+  os_printf("Espruino resetting the esp8266\n");
+  os_delay_us(1000); // time for os_printf to drain
+  system_restart();
+}

@@ -87,18 +87,20 @@ Read 32 bits of memory at the given location - DANGEROUS!
 Write 32 bits of memory at the given location - VERY DANGEROUS!
  */
 
-uint32_t _jswrap_io_peek(JsVarInt addr, int wordSize) {
-  if (wordSize==1) return READ_FLASH_UINT8((char*)(size_t)addr);
+uint32_t _jswrap_io_peek(size_t addr, int wordSize) {
+  if (wordSize==1) return READ_FLASH_UINT8((char*)addr);
   if (wordSize==2) {
-    return READ_FLASH_UINT8((char*)(size_t)addr) | (uint32_t)(READ_FLASH_UINT8((char*)(size_t)(addr+1)) << 8);
+    return READ_FLASH_UINT8((char*)addr) | (uint32_t)(READ_FLASH_UINT8((char*)(addr+1)) << 8);
   }
-  if (wordSize==4) return (uint32_t)*(unsigned int*)(size_t)addr;
+  if (wordSize==4) return (uint32_t)*(unsigned int*)addr;
   return 0;
 }
 
 JsVar *jswrap_io_peek(JsVarInt addr, JsVarInt count, int wordSize) {
+  // hack for ESP8266/ESP32 where the address can be different
+  size_t mappedAddr = jshFlashGetMemMapAddress((size_t)addr);
   if (count<=1) {
-    return jsvNewFromLongInteger((long long)_jswrap_io_peek(addr, wordSize));
+    return jsvNewFromLongInteger((long long)_jswrap_io_peek(mappedAddr, wordSize));
   } else {
     JsVarDataArrayBufferViewType aType;
     if (wordSize==1) aType=ARRAYBUFFERVIEW_UINT8;
@@ -109,8 +111,8 @@ JsVar *jswrap_io_peek(JsVarInt addr, JsVarInt count, int wordSize) {
     JsvArrayBufferIterator it;
     jsvArrayBufferIteratorNew(&it, arr, 0);
     while (jsvArrayBufferIteratorHasElement(&it)) {
-      jsvArrayBufferIteratorSetIntegerValue(&it, (JsVarInt)_jswrap_io_peek(addr, wordSize));
-      addr += wordSize;
+      jsvArrayBufferIteratorSetIntegerValue(&it, (JsVarInt)_jswrap_io_peek(mappedAddr, wordSize));
+      mappedAddr += (size_t)wordSize;
       jsvArrayBufferIteratorNext(&it);
     }
     jsvArrayBufferIteratorFree(&it);
@@ -129,7 +131,7 @@ void jswrap_io_poke(JsVarInt addr, JsVar *data, int wordSize) {
     _jswrap_io_poke(addr, (uint32_t)jsvGetInteger(data), wordSize);
   } else if (jsvIsIterable(data)) {
     JsvIterator it;
-    jsvIteratorNew(&it, data);
+    jsvIteratorNew(&it, data, JSIF_EVERY_ARRAY_ELEMENT);
     while (jsvIteratorHasElement(&it)) {
       _jswrap_io_poke(addr, (uint32_t)jsvIteratorGetIntegerValue(&it), wordSize);
       addr += wordSize;
@@ -172,8 +174,8 @@ Set the analog Value of a pin. It will be output using PWM.
 Objects can contain:
 
 * `freq` - pulse frequency in Hz, eg. ```analogWrite(A0,0.5,{ freq : 10 });``` - specifying a frequency will force PWM output, even if the pin has a DAC
-* `soft` - boolean, If true software PWM is used if available.
-* `forceSoft` - boolean, If true software PWM is used even
+* `soft` - boolean, If true software PWM is used if hardware is not available.
+* `forceSoft` - boolean, If true software PWM is used even if hardware PWM or a DAC is available
 
  **Note:** if you didn't call `pinMode` beforehand then this function will also reset pin's state to `"output"`
  */
@@ -220,7 +222,7 @@ void jswrap_io_digitalPulse(Pin pin, bool value, JsVar *times) {
   } else if (jsvIsIterable(times)) {
     // iterable, so output a square wave
     JsvIterator it;
-    jsvIteratorNew(&it, times);
+    jsvIteratorNew(&it, times, JSIF_EVERY_ARRAY_ELEMENT);
     while (jsvIteratorHasElement(&it)) {
       JsVarFloat time = jsvIteratorGetFloatValue(&it);
       if (time>=0 && !isnan(time))
@@ -253,11 +255,10 @@ as an array of bits where the last array element is the least significant bit.
 In this case, pin values are set least significant bit first (from the right-hand side
 of the array of pins). This means you can use the same pin multiple times, for
 example `digitalWrite([A1,A1,A0,A0],0b0101)` would pulse A0 followed by A1.
-*/
 
-/**
- * Set the output of a GPIO.
- */
+If the pin argument is an object with a `write` method, the `write` method will
+be called with the value passed through.
+*/
 void jswrap_io_digitalWrite(
     JsVar *pinVar, //!< A pin or pins.
     JsVarInt value //!< The value of the output.
@@ -274,9 +275,16 @@ void jswrap_io_digitalWrite(
       jsvUnLock(pinNamePtr);
       value = value>>1; // next bit down
     }
-  }
-  // Handle the case where it is a single pin.
-  else {
+  } else if (jsvIsObject(pinVar)) {
+    JsVar *w = jspGetNamedField(pinVar, "write", false);
+    if (jsvIsFunction(w)) {
+      JsVar *v = jsvNewFromInteger(value);
+      jsvUnLock(jspeFunctionCall(w,0,pinVar,false,1,&v));
+      jsvUnLock(v);
+    } else jsExceptionHere(JSET_ERROR, "Invalid pin!");
+    jsvUnLock(w);
+  } else {
+    // Handle the case where it is a single pin.
     Pin pin = jshGetPinFromVar(pinVar);
     jshPinOutput(pin, value != 0);
   }
@@ -298,11 +306,10 @@ Get the digital value of the given pin.
 
 If the pin argument is an array of pins (eg. `[A2,A1,A0]`) the value returned will be an number where
 the last array element is the least significant bit, for example if `A0=A1=1` and `A2=0`, `digitalRead([A2,A1,A0]) == 0b011`
-*/
 
-/**
- * Read the value of a GPIO pin.
- */
+If the pin argument is an object with a `read` method, the `read` method will be called and the integer value it returns
+passed back.
+*/
 JsVarInt jswrap_io_digitalRead(JsVar *pinVar) {
   // Hadnle the case where it is an array of pins.
   if (jsvIsArray(pinVar)) {
@@ -320,9 +327,16 @@ JsVarInt jswrap_io_digitalRead(JsVar *pinVar) {
     jsvObjectIteratorFree(&it);
     if (pins==0) return 0; // return undefined if array empty
     return value;
-  }
-  // Handle the case where it is a single pin.
-  else {
+  } else if (jsvIsObject(pinVar)) {
+    JsVarInt v = 0;
+    JsVar *r = jspGetNamedField(pinVar, "read", false);
+    if (jsvIsFunction(r)) {
+      v = jsvGetIntegerAndUnLock(jspeFunctionCall(r,0,pinVar,false,0,0));
+    } else jsExceptionHere(JSET_ERROR, "Invalid pin!");
+    jsvUnLock(r);
+    return v;
+  } else {
+    // Handle the case where it is a single pin.
     Pin pin = jshGetPinFromVar(pinVar);
     return jshPinInput(pin);
   }
@@ -577,26 +591,49 @@ void jswrap_io_shiftOut(JsVar *pins, JsVar *options, JsVar *data) {
   "params" : [
     ["function", "JsVar", "A Function or String to be executed"],
     ["pin", "pin", "The pin to watch"],
-    ["options", "JsVar",[ "If this is a boolean or integer, it determines whether to call this once (false = default) or every time a change occurs (true)","If this is an object, it can contain the following information: ```{ repeat: true/false(default), edge:'rising'/'falling'/'both'(default), debounce:10}```. `debounce` is the time in ms to wait for bounces to subside, or 0."]]
+    ["options", "JsVar","If a boolean or integer, it determines whether to call this once (false = default) or every time a change occurs (true). Can be an object of the form `{ repeat: true/false(default), edge:'rising'/'falling'/'both'(default), debounce:10}` - see below for more information."]
   ],
   "return" : ["JsVar","An ID that can be passed to clearWatch"]
 }
 Call the function specified when the pin changes. Watches set with `setWatch` can be removed using `clearWatch`.
 
-The function may also take an argument, which is an object of type `{state:bool, time:float, lastTime:float}`.
+If the `options` parameter is an object, it can contain the following information (all optional):
+
+```
+{
+   // Whether to keep producing callbacks, or remove the watch after the first callback
+   repeat: true/false(default),
+   // Trigger on the rising or falling edge of the signal. Can be a string, or 1='rising', -1='falling', 0='both'
+   edge:'rising'(default for built-in buttons)/'falling'/'both'(default for pins),
+   // Use software-debouncing to stop multiple calls if a switch bounces
+   // This is the time in milliseconds to wait for bounces to subside, or 0 to disable
+   debounce:10 (0 is default for pins, 25 is default for built-in buttons),
+   // Advanced: If the function supplied is a 'native' function (compiled or assembly)
+   // setting irq:true will call that function in the interrupt itself
+   irq : false(default)
+   // Advanced: If specified, the given pin will be read whenever the watch is called
+   // and the state will be included as a 'data' field in the callback
+   data : pin
+}
+```
+
+The `function` callback is called with an argument, which is an object of type `{state:bool, time:float, lastTime:float}`.
 
  * `state` is whether the pin is currently a `1` or a `0`
  * `time` is the time in seconds at which the pin changed state
  * `lastTime` is the time in seconds at which the **pin last changed state**. When using `edge:'rising'` or `edge:'falling'`, this is not the same as when the function was last called.
+ * `data` is included if `data:pin` was specified in the options, and can be used for reading in clocked data
 
 For instance, if you want to measure the length of a positive pulse you could use `setWatch(function(e) { console.log(e.time-e.lastTime); }, BTN, { repeat:true, edge:'falling' });`.
 This will only be called on the falling edge of the pulse, but will be able to measure the width of the pulse because `e.lastTime` is the time of the rising edge.
 
-Internally, an interrupt writes the time of the pin's state change into a queue, and the function
-supplied to `setWatch` is executed only from the main message loop. However, if the callback is a
-native function `void (bool state)` then you can add `irq:true` to options, which will cause the
-function to be called from within the IRQ. When doing this, interrupts will happen on both edges
-and there will be no debouncing.
+Internally, an interrupt writes the time of the pin's state change into a queue with the exact
+time that it happened, and the function supplied to `setWatch` is executed only from the main
+message loop. However, if the callback is a native function `void (bool state)` then you can
+add `irq:true` to options, which will cause the function to be called from within the IRQ.
+When doing this, interrupts will happen on both edges and there will be no debouncing.
+
+**Note:** if you didn't call `pinMode` beforehand then this function will reset pin's state to `"input"`
 
 **Note:** The STM32 chip (used in the [Espruino Board](/EspruinoBoard) and [Pico](/Pico)) cannot
 watch two pins with the same number - eg `A0` and `B0`.
@@ -613,7 +650,7 @@ JsVar *jswrap_interface_setWatch(
   }
 
   if (!jsiIsWatchingPin(pin) && !jshCanWatch(pin)) {
-    jsWarn("Unable to set watch. You may already have a watch on a pin with the same number (eg. A0 and B0)");
+    jsWarn("Unable to set watch. You may already have a watch on a pin with the same number (eg. A0 and B0),\nor this pin cannot be used with watch");
     return 0;
   }
 
@@ -621,26 +658,39 @@ JsVar *jswrap_interface_setWatch(
   JsVarFloat debounce = 0;
   int edge = 0;
   bool isIRQ = false;
+  Pin dataPin = PIN_UNDEFINED;
+  if (IS_PIN_A_BUTTON(pin)) {
+    edge = 1;
+    debounce = 25;
+  }
   if (jsvIsObject(repeatOrObject)) {
     JsVar *v;
-    repeat = jsvGetBoolAndUnLock(jsvObjectGetChild(repeatOrObject, "repeat", 0));
-    debounce = jsvGetFloatAndUnLock(jsvObjectGetChild(repeatOrObject, "debounce", 0));
+    v = jsvObjectGetChild(repeatOrObject, "repeat", 0);
+    if (v) repeat = jsvGetBoolAndUnLock(v);
+    v = jsvObjectGetChild(repeatOrObject, "debounce", 0);
+    if (v) debounce = jsvGetFloatAndUnLock(v);
     if (isnan(debounce) || debounce<0) debounce=0;
     v = jsvObjectGetChild(repeatOrObject, "edge", 0);
-    edge = -1000;
     if (jsvIsUndefined(v)) {
-      edge = 0;
-    } else if (jsvIsString(v)) {
-      if (jsvIsStringEqual(v, "rising")) edge=1;
-      else if (jsvIsStringEqual(v, "falling")) edge=-1;
-      else if (jsvIsStringEqual(v, "both")) edge=0;
+      // do nothing - use default
+    } else if (jsvIsNumeric(v)) {
+      JsVarInt i = jsvGetInteger(v);
+      edge = (i>0)?1:((i<0)?-1:0);
+    } else {
+      edge = -1000; // force error unless checks below work
+      if (jsvIsString(v)) {
+        if (jsvIsStringEqual(v, "rising")) edge=1;
+        else if (jsvIsStringEqual(v, "falling")) edge=-1;
+        else if (jsvIsStringEqual(v, "both")) edge=0;
+      }
     }
     jsvUnLock(v);
     if (edge < -1 || edge > 1) {
-      jsExceptionHere(JSET_TYPEERROR, "'edge' in setWatch should be a string - either 'rising', 'falling' or 'both'");
+      jsExceptionHere(JSET_TYPEERROR, "'edge' in setWatch should be 1, -1, 0, 'rising', 'falling' or 'both'");
       return 0;
     }
     isIRQ = jsvGetBoolAndUnLock(jsvObjectGetChild(repeatOrObject, "irq", 0));
+    dataPin = jshGetPinFromVarAndUnLock(jsvObjectGetChild(repeatOrObject, "data", 0));
   } else
     repeat = jsvGetBool(repeatOrObject);
 
@@ -648,13 +698,6 @@ JsVar *jswrap_interface_setWatch(
   if (!jsvIsFunction(func) && !jsvIsString(func)) {
     jsExceptionHere(JSET_ERROR, "Function or String not supplied!");
   } else {
-    // Create a new watch object which may contain:
-    //
-    // o pin      - The pin being watched
-    // o recur    - ?
-    // o debounce - ?
-    // o edge     - ?
-    // o callback - The function to be invoked when the IO changes
     JsVar *watchPtr = jsvNewObject();
     if (watchPtr) {
       jsvObjectSetChildAndUnLock(watchPtr, "pin", jsvNewFromPin(pin));
@@ -671,9 +714,13 @@ JsVar *jswrap_interface_setWatch(
     // disable event callbacks by default
     if (exti) {
       jshSetEventCallback(exti, 0);
+      if (jshIsPinValid(dataPin))
+        jshSetEventDataPin(exti, dataPin);
       if (isIRQ) {
         if (jsvIsNativeFunction(func)) {
           jshSetEventCallback(exti, (JshEventCallbackCallback)jsvGetNativeFunctionPtr(func));
+        } else if (jshIsPinValid(dataPin)) {
+          jsExceptionHere(JSET_ERROR, "Can't have a data pin and irq:true");
         } else {
           jsExceptionHere(JSET_ERROR, "irq=true set, but function is not a native function");
         }

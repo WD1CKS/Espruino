@@ -13,6 +13,11 @@
 # Set the BOARD environment variable to one of the names of the .py file in
 # the `boards` directory. Eg. PICO, PUCKJS, ESPRUINOWIFI, etc
 #
+# make               # make whatever the default binary is
+# make flash         # Try and flash using the platform's normal flash tool
+# make serialflash   # flash over USB serial bootloader (STM32)
+# make lst           # Make listing files
+#
 # Also:
 #
 # DEBUG=1                 # add debug symbols (-g)
@@ -23,7 +28,8 @@
 # CFILE=test.c            # Compile in the supplied C file
 # CPPFILE=test.cpp        # Compile in the supplied C++ file
 #
-# WIZNET=1                # If compiling for a non-linux target that has internet support, use WIZnet support
+# WIZNET=1                # If compiling for a non-linux target that has internet support, use WIZnet W5500 support
+#   W5100=1               # Compile for WIZnet W5100 (not W5500)
 # CC3000=1                # If compiling for a non-linux target that has internet support, use CC3000 support
 # USB_PRODUCT_ID=0x1234   # force a specific USB Product ID (default 0x5740)
 #
@@ -47,24 +53,21 @@
 include make/sanitycheck.make
 
 ifndef GENDIR
-GENDIR=$(shell pwd)/gen
+GENDIR=gen
 endif
 
 ifndef SINGLETHREAD
 MAKEFLAGS=-j5 # multicore
 endif
 
-INCLUDE=-I$(ROOT) -I$(ROOT)/targets -I$(ROOT)/src -I$(GENDIR)
-LIBS=
-DEFINES=
-CFLAGS=-Wall -Wextra -Wconversion -Werror=implicit-function-declaration -fno-strict-aliasing
-LDFLAGS=-Winline
-OPTIMIZEFLAGS=
+INCLUDE?=-I$(ROOT) -I$(ROOT)/targets -I$(ROOT)/src -I$(GENDIR)
+LIBS?=
+DEFINES?=
+CFLAGS?=-Wall -Wextra -Wconversion -Werror=implicit-function-declaration -fno-strict-aliasing -g
+LDFLAGS?=-Winline -g
+OPTIMIZEFLAGS?=
 #-fdiagnostics-show-option - shows which flags can be used with -Werror
-DEFINES+=-DGIT_COMMIT=$(shell git log -1 --format="%H")
-
-# Espruino flags...
-USE_MATH=1
+DEFINES+=-DGIT_COMMIT=$(shell git log -1 --format="%h")
 
 ifeq ($(shell uname),Darwin)
 MACOSX=1
@@ -125,7 +128,7 @@ BASEADDRESS=0x08000000
 
 ifeq ($(BOARD),)
  # Try and guess board names
- ifeq ($(shell uname -m),armv6l)
+ ifneq ($(shell grep Raspbian /etc/os-release),)
   BOARD=RASPBERRYPI # just a guess
  else ifeq ($(shell uname -n),beaglebone)
   BOARD=BEAGLEBONE
@@ -136,6 +139,7 @@ ifeq ($(BOARD),)
   #$(info *           To build, use BOARD=my_board make               *)
   #$(info *************************************************************)
   BOARD=LINUX
+  DEFINES+=-DSYSFS_GPIO_DIR="\"/sys/class/gpio\""
  endif
 endif
 
@@ -176,6 +180,9 @@ ifdef USE_NET
 ifndef LINUX
 ifdef WIZNET
 USE_WIZNET=1
+ifdef W5100
+USE_WIZNET_W5100=1
+endif
 else ifeq ($(FAMILY),ESP8266)
 USE_ESP8266=1
 else ifeq ($(FAMILY),ESP32)
@@ -206,13 +213,16 @@ OPTIMIZEFLAGS+=-pg
 endif
 
 # These are files for platform-specific libraries
-TARGETSOURCES =
+TARGETSOURCES ?=
+
+# These are JS files to be included as pre-built Espruino modules
+JSMODULESOURCES ?=
 
 # Files that contains objects/functions/methods that will be
 # exported to JS. The order here actually determines the order
 # objects will be matched in. So for example Pins must come
 # above ints, since a Pin is also matched as an int.
-WRAPPERSOURCES = \
+WRAPPERSOURCES += \
 src/jswrap_array.c \
 src/jswrap_arraybuffer.c \
 src/jswrap_dataview.c \
@@ -232,7 +242,9 @@ src/jswrap_onewire.c \
 src/jswrap_pipe.c \
 src/jswrap_process.c \
 src/jswrap_promise.c \
+src/jswrap_regexp.c \
 src/jswrap_serial.c \
+src/jswrap_storage.c \
 src/jswrap_spi_i2c.c \
 src/jswrap_stream.c \
 src/jswrap_string.c \
@@ -240,8 +252,10 @@ src/jswrap_waveform.c \
 
 # it is important that _pin comes before stuff which uses
 # integers (as the check for int *includes* the chek for pin)
-SOURCES = \
+SOURCES += \
 src/jslex.c \
+src/jsflags.c \
+src/jsflash.c \
 src/jsvar.c \
 src/jsvariterator.c \
 src/jsutils.c \
@@ -252,6 +266,7 @@ src/jsinteractive.c \
 src/jsdevices.c \
 src/jstimer.c \
 src/jsi2c.c \
+src/jsserial.c \
 src/jsspi.c \
 src/jshardware_common.c \
 $(WRAPPERFILE)
@@ -277,8 +292,12 @@ SOURCES += \
 libs/compression/compress_rle.c
 
 else
+
+ifneq ($(FAMILY),ESP8266)
 # If we have enough flash, include the debugger
+# ESP8266 can't do it because it expects tasks to finish within set time
 DEFINES+=-DUSE_DEBUGGER
+endif
 # Use use tab complete
 DEFINES+=-DUSE_TAB_COMPLETE
 
@@ -325,7 +344,6 @@ endif #USE_FILESYSTEM_SDIO
 endif #!LINUX
 endif #USE_FILESYSTEM
 
-ifdef USE_MATH
 DEFINES += -DUSE_MATH
 INCLUDE += -I$(ROOT)/libs/math
 WRAPPERSOURCES += libs/math/jswrap_math.c
@@ -336,7 +354,6 @@ LDFLAGS += -L$(ROOT)/targets/esp8266
 else
 # everything else uses normal maths lib
 LIBS += -lm
-endif
 endif
 
 ifdef USE_GRAPHICS
@@ -350,21 +367,26 @@ libs/graphics/lcd_arraybuffer.c \
 libs/graphics/lcd_js.c
 
 ifdef USE_LCD_SDL
-DEFINES += -DUSE_LCD_SDL
-SOURCES += libs/graphics/lcd_sdl.c
-LIBS += -lSDL
-INCLUDE += -I/usr/include/SDL
+  DEFINES += -DUSE_LCD_SDL
+  SOURCES += libs/graphics/lcd_sdl.c
+  LIBS += -lSDL
+  INCLUDE += -I/usr/include/SDL
 endif
 
 ifdef USE_LCD_FSMC
-DEFINES += -DUSE_LCD_FSMC
-SOURCES += libs/graphics/lcd_fsmc.c
+  DEFINES += -DUSE_LCD_FSMC
+  SOURCES += libs/graphics/lcd_fsmc.c
+endif
+
+ifdef USE_TERMINAL
+  DEFINES += -DUSE_TERMINAL
+  WRAPPERSOURCES += libs/graphics/jswrap_terminal.c
 endif
 
 endif
 
 ifdef USE_USB_HID
-DEFINES += -DUSE_USB_HID
+  DEFINES += -DUSE_USB_HID
 endif
 
 ifdef USE_NET
@@ -416,8 +438,14 @@ ifdef USE_NET
  libs/network/wiznet/DNS/dns.c \
  libs/network/wiznet/DHCP/dhcp.c \
  libs/network/wiznet/Ethernet/wizchip_conf.c \
- libs/network/wiznet/Ethernet/socket.c \
- libs/network/wiznet/W5500/w5500.c
+ libs/network/wiznet/Ethernet/socket.c
+  ifdef USE_WIZNET_W5100
+   DEFINES += -D_WIZCHIP_=5100
+   SOURCES += libs/network/wiznet/W5100/w5100.c
+  else
+   DEFINES += -D_WIZCHIP_=5500
+   SOURCES += libs/network/wiznet/W5500/w5500.c
+  endif
  endif
 
  ifdef USE_WICED
@@ -478,56 +506,47 @@ ifdef USE_NET
  endif
 
  ifdef USE_TELNET
- DEFINES += -DUSE_TELNET
- WRAPPERSOURCES += libs/network/telnet/jswrap_telnet.c
- INCLUDE += -I$(ROOT)/libs/network/telnet
+  DEFINES += -DUSE_TELNET
+  WRAPPERSOURCES += libs/network/telnet/jswrap_telnet.c
+  INCLUDE += -I$(ROOT)/libs/network/telnet
  endif
 endif # USE_NET
 
 ifdef USE_TV
-DEFINES += -DUSE_TV
-WRAPPERSOURCES += libs/tv/jswrap_tv.c
-INCLUDE += -I$(ROOT)/libs/tv
-SOURCES += \
-libs/tv/tv.c
+  DEFINES += -DUSE_TV
+  WRAPPERSOURCES += libs/tv/jswrap_tv.c
+  INCLUDE += -I$(ROOT)/libs/tv
+  SOURCES += \
+  libs/tv/tv.c
 endif
 
 ifdef USE_TRIGGER
-DEFINES += -DUSE_TRIGGER
-WRAPPERSOURCES += libs/trigger/jswrap_trigger.c
-INCLUDE += -I$(ROOT)/libs/trigger
-SOURCES += \
-libs/trigger/trigger.c
+  DEFINES += -DUSE_TRIGGER
+  WRAPPERSOURCES += libs/trigger/jswrap_trigger.c
+  INCLUDE += -I$(ROOT)/libs/trigger
+  SOURCES += \
+  libs/trigger/trigger.c
 endif
 
 ifdef USE_HASHLIB
-INCLUDE += -I$(ROOT)/libs/hashlib
-WRAPPERSOURCES += \
-libs/hashlib/jswrap_hashlib.c
-SOURCES += \
-libs/hashlib/sha2.c
+  INCLUDE += -I$(ROOT)/libs/hashlib
+  WRAPPERSOURCES += \
+  libs/hashlib/jswrap_hashlib.c
+  SOURCES += \
+  libs/hashlib/sha2.c
 endif
 
 ifdef USE_WIRINGPI
-DEFINES += -DUSE_WIRINGPI
-LIBS += -lwiringPi
-INCLUDE += -I/usr/local/include -L/usr/local/lib
+  DEFINES += -DUSE_WIRINGPI
+  LIBS += -lwiringPi
+  INCLUDE += -I/usr/local/include -L/usr/local/lib
 endif
 
 ifdef USE_BLUETOOTH
   DEFINES += -DBLUETOOTH
   INCLUDE += -I$(ROOT)/libs/bluetooth
   WRAPPERSOURCES += libs/bluetooth/jswrap_bluetooth.c
-endif
-
-ifeq ($(BOARD),MICROBIT)
-  INCLUDE += -I$(ROOT)/libs/microbit
-  WRAPPERSOURCES += libs/microbit/jswrap_microbit.c
-endif
-
-ifeq ($(BOARD),PUCKJS)
-  INCLUDE += -I$(ROOT)/libs/puckjs
-  WRAPPERSOURCES += libs/puckjs/jswrap_puck.c
+  SOURCES += libs/bluetooth/bluetooth_utils.c
 endif
 
 ifdef USE_CRYPTO
@@ -536,10 +555,15 @@ ifdef USE_CRYPTO
   INCLUDE += -I$(ROOT)/libs/crypto/mbedtls
   INCLUDE += -I$(ROOT)/libs/crypto/mbedtls/include
   WRAPPERSOURCES += libs/crypto/jswrap_crypto.c
-  SOURCES += \
-libs/crypto/mbedtls/library/sha1.c \
-libs/crypto/mbedtls/library/sha256.c \
-libs/crypto/mbedtls/library/sha512.c
+  SOURCES += libs/crypto/mbedtls/library/sha1.c 
+ifdef USE_SHA256
+  DEFINES += -DUSE_SHA256
+  SOURCES += libs/crypto/mbedtls/library/sha256.c
+endif
+ifdef USE_SHA512
+  DEFINES += -DUSE_SHA512
+  SOURCES += libs/crypto/mbedtls/library/sha512.c
+endif
 
 ifdef USE_TLS
   USE_AES=1
@@ -626,18 +650,22 @@ ifdef USE_NFC
   TARGETSOURCES    += $(NRF5X_SDK_PATH)/components/nfc/ndef/generic/message/nfc_ndef_msg.c
   TARGETSOURCES    += $(NRF5X_SDK_PATH)/components/nfc/ndef/generic/record/nfc_ndef_record.c
   TARGETSOURCES    += $(NRF5X_SDK_PATH)/components/nfc/t2t_lib/hal_t2t/hal_nfc_t2t.c
-  PRECOMPILED_OBJS += $(NRF5X_SDK_PATH)/components/nfc/t2t_lib/nfc_t2t_lib_gcc.a
 endif
 
-ifdef USE_NUCLEO
-WRAPPERSOURCES += targets/nucleo/jswrap_nucleo.c
+ifdef USE_WIO_LTE
+  INCLUDE += -I$(ROOT)/libs/wio_lte
+  WRAPPERSOURCES += libs/wio_lte/jswrap_wio_lte.c
+  SOURCES += targets/stm32/stm32_ws2812b_driver.c
 endif
 
-ifdef WICED
-WRAPPERSOURCES += targets/emw3165/jswrap_emw3165.c
-endif
 
 endif # BOOTLOADER ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ DON'T USE STUFF ABOVE IN BOOTLOADER
+
+# =========================================================================
+
+.PHONY:  proj
+
+all: 	 proj
 
 # =========================================================================
 ifneq ($(FAMILY),)
@@ -665,6 +693,7 @@ CFLAGS += $(OPTIMIZEFLAGS) -c $(ARCHFLAGS) $(DEFINES) $(INCLUDE)
 
 # -Wl,--gc-sections helps remove unused code
 # -Wl,--whole-archive checks for duplicates
+# --specs=nano.specs uses newlib-nano
 ifdef NRF5X
  LDFLAGS += $(OPTIMIZEFLAGS) $(ARCHFLAGS) --specs=nano.specs -lc -lnosys
 else ifdef STM32
@@ -715,10 +744,6 @@ endif
 # =============================================================================
 # =============================================================================
 
-.PHONY:  proj
-
-all: 	 proj
-
 %.min.js: %.js
 	python -m jsmin $< > $@
 
@@ -739,7 +764,7 @@ $(WRAPPERFILE): scripts/build_jswrapper.py $(WRAPPERSOURCES)
 	@echo Generating JS wrappers
 	$(Q)echo WRAPPERSOURCES = $(WRAPPERSOURCES)
 	$(Q)echo DEFINES =  $(DEFINES)
-	$(Q)python scripts/build_jswrapper.py $(WRAPPERSOURCES) $(DEFINES) -B$(BOARD) -F$(WRAPPERFILE)
+	$(Q)python scripts/build_jswrapper.py $(WRAPPERSOURCES) $(JSMODULESOURCES) $(DEFINES) -B$(BOARD) -F$(WRAPPERFILE)
 
 ifdef PININFOFILE
 $(PININFOFILE).c $(PININFOFILE).h: scripts/build_pininfo.py
@@ -808,9 +833,12 @@ else # NO_COMPILE
 $(info WRAPPERSOURCES=$(WRAPPERSOURCES));
 endif
 
+lst: $(PROJ_NAME).lst
+
 clean:
 	@echo Cleaning targets
-	$(Q)find . -name \*.o | grep -v arm-bcm2708 | xargs rm -f
+	$(Q)find . -name \*.o | grep -v "./arm-bcm2708\|./gcc-arm-none-eabi" | xargs rm -f
+	$(Q)find . -name \*.d | grep -v "./arm-bcm2708\|./gcc-arm-none-eabi" | xargs rm -f
 	$(Q)rm -f $(ROOT)/gen/*.c $(ROOT)/gen/*.h $(ROOT)/gen/*.ld
 	$(Q)rm -f $(ROOT)/scripts/*.pyc $(ROOT)/boards/*.pyc
 	$(Q)rm -f $(PROJ_NAME).elf

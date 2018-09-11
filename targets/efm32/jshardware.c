@@ -26,6 +26,7 @@
 #include "jsinteractive.h"
 #include "jswrap_io.h"
 #include "jswrap_date.h" // for non-F1 calendar -> days since 1970 conversion.
+#include "jsflags.h"
 
 //EFM32 HAL includes
 #include "em_chip.h"
@@ -121,7 +122,7 @@ void TIMER0_IRQHandler(void) {
 Pin watchedPins[16];
 
 static ALWAYS_INLINE GPIO_Port_TypeDef efm32PortFromPin(uint32_t pin){
-  return (GPIO_Port_TypeDef) (pinInfo[pin].port - JSH_PORTA);
+  return (GPIO_Port_TypeDef) ((pinInfo[pin].port&JSH_PORT_MASK) - JSH_PORTA);
 }
 
 static ALWAYS_INLINE uint8_t efm32EventFromPin(Pin pin) {
@@ -185,7 +186,7 @@ void UART0_RX_IRQHandler(void)
     USART_IntClear(uart0, UART_IF_RXDATAV);
 
     /* Read one byte from the receive data register */
-    jshPushIOCharEvent(EV_SERIAL4, (char)USART_Rx(uart0));
+    jshPushIOCharEvent(EV_SERIAL1, (char)USART_Rx(uart0));
   }
 }
 
@@ -198,7 +199,7 @@ void UART0_TX_IRQHandler(void)
   if (uart0->IF & UART_IF_TXBL)
   {
     /* If we have other data to send, send it */
-    int c = jshGetCharToTransmit(EV_SERIAL4);
+    int c = jshGetCharToTransmit(EV_SERIAL1);
     if (c >= 0) {
       USART_Tx(uart0, (uint8_t)c);
     } else
@@ -439,6 +440,11 @@ void jshInterruptOff() {
 
 void jshInterruptOn() {
   INT_Enable();
+}
+
+/// Are we currently in an interrupt?
+bool jshIsInInterrupt() {
+  return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
 }
 
 void jshDelayMicroseconds(int microsec) {
@@ -698,6 +704,11 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf)
 {
   // Initializes UART and registers a callback function defined above to read characters into the static variable character.
 
+  if (inf->errorHandling) {
+    jsExceptionHere(JSET_ERROR, "EFM32 Espruino builds can't handle framing/parity errors (errors:true)");
+    return;
+  }
+
   USART_TypeDef* uart; // Re-mapping from Espruino to EFM32
   uint32_t rxIRQ;
   uint32_t txIRQ;
@@ -722,19 +733,6 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf)
       rxIRQ = USART2_RX_IRQn;
       txIRQ = USART2_TX_IRQn;
       CMU_ClockEnable(cmuClock_USART2, true);
-      break;
-    case EV_SERIAL4:
-      uart = uart0;
-      rxIRQ = UART0_RX_IRQn;
-      txIRQ = UART0_TX_IRQn;
-      routeLoc = UART_ROUTE_LOCATION_LOC1;
-      CMU_ClockEnable(cmuClock_UART0, true);
-      break;
-    case EV_SERIAL5:
-      uart = uart1;
-      rxIRQ = UART1_RX_IRQn;
-      txIRQ = UART1_TX_IRQn;
-      CMU_ClockEnable(cmuClock_UART1, true);
       break;
     default: assert(0);
   }
@@ -790,12 +788,6 @@ void jshUSARTKick(IOEventFlags device) {
       break;
     case EV_SERIAL3:
       uart = usart2;
-      break;
-    case EV_SERIAL4:
-      uart = uart0;
-      break;
-    case EV_SERIAL5:
-      uart = uart1;
       break;
     default: assert(0);
   }
@@ -908,6 +900,9 @@ void jshFlashWrite(void * buf, uint32_t addr, uint32_t len)
   NVMHAL_DeInit();
 }
 
+// Just pass data through, since we can access flash at the same address we wrote it
+size_t jshFlashGetMemMapAddress(size_t ptr) { return ptr; }
+
 /// Enter simple sleep mode (can be woken up by interrupts). Returns true on success
 bool jshSleep(JsSysTime timeUntilWake) {
 #ifdef USE_RTC
@@ -920,7 +915,7 @@ bool jshSleep(JsSysTime timeUntilWake) {
    */
   //jsiConsolePrintf("\ns: %d, t: %d, R: %d, T: %d", jsiStatus, timeUntilWake, jstUtilTimerIsRunning(), jshHasTransmitData());
   if (
-      (jsiStatus & JSIS_ALLOW_DEEP_SLEEP) &&
+      jsfGetFlag(JSF_DEEP_SLEEP) &&
       (timeUntilWake > (jshGetTimeForSecond()/2)) &&  // if there's less time than this then we can't go to sleep because we can't be sure we'll wake in time
       !jstUtilTimerIsRunning() && // if the utility timer is running (eg. digitalPulse, Waveform output, etc) then that would stop
       !jshHasTransmitData() && // if we're transmitting, we don't want USART/etc to get slowed down
@@ -1032,4 +1027,9 @@ unsigned int jshGetRandomNumber() {
 
 unsigned int jshSetSystemClock(JsVar *options) {
   return 0;
+}
+
+/// Perform a proper hard-reboot of the device
+void jshReboot() {
+  jsExceptionHere(JSET_ERROR, "Not implemented");
 }

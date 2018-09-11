@@ -31,11 +31,7 @@ const char *DAYNAMES = "Sun\0Mon\0Tue\0Wed\0Thu\0Fri\0Sat";
 
 /// return time zone in minutes
 static int getTimeZone() {
-#ifdef SAVE_ON_FLASH
-  return 0;
-#else
   return jsvGetIntegerAndUnLock(jsvObjectGetChild(execInfo.hiddenRoot, JS_TIMEZONE_VAR, 0));
-#endif
 }
 
 /* NOTE: we use / and % here because the compiler is smart enough to
@@ -45,7 +41,7 @@ TimeInDay getTimeFromMilliSeconds(JsVarFloat ms_in, bool forceGMT) {
   t.zone = forceGMT ? 0 : getTimeZone();
   ms_in += t.zone*60000;
   t.daysSinceEpoch = (int)(ms_in / MSDAY);
-  
+
   int ms = (int)(ms_in - ((JsVarFloat)t.daysSinceEpoch * MSDAY));
   if (ms<0) {
     ms += MSDAY;
@@ -68,6 +64,7 @@ JsVarFloat fromTimeInDay(TimeInDay *td) {
 // First calculate the number of four-year-interval, so calculation
 // of leap year will be simple. Btw, because 2000 IS a leap year and
 // 2100 is out of range, the formlua is simplified
+// dow,date/day/month/year will always be in range
 CalendarDate getCalendarDate(int d) {
   int y,m;
   const short *mdays=DAYS;
@@ -100,18 +97,15 @@ CalendarDate getCalendarDate(int d) {
 
   date.year=y;
 
-  //Find the month
-
+  // Find the month
   m=0;
-  while (mdays[m]<d+1 && m<12) {
-    m++;
-  }
+  while (mdays[m]<d+1 && m<12) m++;
   date.month=m-1;
   date.day=d - mdays[date.month]+1;
 
-
   // Calculate day of week. Sunday is 0
   date.dow=(date.daysSinceEpoch+BASE_DOW)%7;
+  if (date.dow<0) date.dow+=7;
   return date;
 };
 
@@ -119,6 +113,7 @@ int fromCalenderDate(CalendarDate *date) {
   int y=date->year - 1970;
   int f=y/4;
   int yf=y%4;
+  if (yf<0) yf+=4;
   const short *mdays;
 
   int ydays=yf*YDAY;
@@ -132,7 +127,10 @@ int fromCalenderDate(CalendarDate *date) {
   if (yf>=2)
     ydays=ydays+1;
 
-  return f*FDAY+YDAYS[yf]+mdays[date->month%12]+date->day-1;
+  int m = date->month%12;
+  if (m<0) m+=12;
+
+  return f*FDAY+YDAYS[yf]+mdays[m]+date->day-1;
 };
 
 
@@ -218,8 +216,8 @@ JsVar *jswrap_date_constructor(JsVar *args) {
   } else {
     CalendarDate date;
     date.year = (int)jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 0));
-    date.month = (int)(jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 1)) % 12);
-    date.day = (int)(jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 2)) % 31);
+    date.month = (int)(jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 1)));
+    date.day = (int)(jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 2)));
     TimeInDay td;
     td.daysSinceEpoch = fromCalenderDate(&date);
     td.hour = (int)(jsvGetIntegerAndUnLock(jsvGetArrayItem(args, 3)) % 24);
@@ -272,7 +270,7 @@ JsVarFloat jswrap_date_getTime(JsVar *date) {
 /*JSON{
   "type" : "method",
   "class" : "Date",
-  "name" : "getTime",
+  "name" : "setTime",
   "generate" : "jswrap_date_setTime",
   "params" : [
     ["timeValue","float","the number of milliseconds since 1970"]
@@ -640,11 +638,11 @@ JsVar *jswrap_date_toISOString(JsVar *parent) {
 }
 
 static JsVarInt _parse_int() {
-  return (int)stringToIntWithRadix(jslGetTokenValueAsString(), 10, 0);
+  return (int)stringToIntWithRadix(jslGetTokenValueAsString(), 10, NULL, NULL);
 }
 
 static bool _parse_time(TimeInDay *time, int initialChars) {
-  time->hour = (int)stringToIntWithRadix(&jslGetTokenValueAsString()[initialChars], 10, 0);
+  time->hour = (int)stringToIntWithRadix(&jslGetTokenValueAsString()[initialChars], 10, NULL, NULL);
   jslGetNextToken();
   if (lex->tk==':') {
     jslGetNextToken();
@@ -659,6 +657,7 @@ static bool _parse_time(TimeInDay *time, int initialChars) {
           time->ms = (int)(f*1000) % 1000;
           jslGetNextToken();
           if (lex->tk == LEX_ID && strcmp(jslGetTokenValueAsString(),"GMT")==0) {
+            time->zone = 0;
             jslGetNextToken();
           }
           if (lex->tk == '+' || lex->tk == '-') {
@@ -701,7 +700,7 @@ JsVarFloat jswrap_date_parse(JsVar *str) {
   time.min = 0;
   time.sec = 0;
   time.ms = 0;
-  time.zone = getTimeZone();
+  time.zone = 0;
   CalendarDate date = getCalendarDate(0);
 
   JsLex lex;
@@ -713,6 +712,7 @@ JsVarFloat jswrap_date_parse(JsVar *str) {
     date.dow = getDay(jslGetTokenValueAsString());
     if (date.month>=0) {
       // Aug 9, 1995
+      time.zone = getTimeZone();
       jslGetNextToken();
       if (lex.tk == LEX_INT) {
         date.day = _parse_int();
@@ -729,6 +729,7 @@ JsVarFloat jswrap_date_parse(JsVar *str) {
         }
       }
     } else if (date.dow>=0) {
+      time.zone = getTimeZone();
       date.month = 0;
       jslGetNextToken();
       if (lex.tk==',') {
@@ -768,6 +769,7 @@ JsVarFloat jswrap_date_parse(JsVar *str) {
             date.day = _parse_int();
             jslGetNextToken();
             if (lex.tk == LEX_ID && jslGetTokenValueAsString()[0]=='T') {
+              time.zone = getTimeZone();
               _parse_time(&time, 1);
             }
           }

@@ -26,6 +26,7 @@
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
 #include "nrf5x_utils.h"
+#include "jsflash.h" // for jsfRemoveCodeFromFlash
 
 #define MAG_PWR 18
 #define MAG_INT 17
@@ -38,7 +39,7 @@ const Pin PUCK_IO_PINS[] = {1,2,4,6,7,8,23,24,28,29,30,31};
 
 // Has the magnetometer been turned on?
 bool mag_enabled = false;
-int16_t mag_reading[3];
+int16_t mag_reading[3];  //< magnetometer xyz reading
 
 
 /* TODO: Use software I2C for this instead. Since we're relying
@@ -195,7 +196,7 @@ void mag_wait() {
 void mag_read() {
   i2c_start();
   i2c_wr(MAG3110_ADDR<<1);
-  i2c_wr(1);
+  i2c_wr(1); // OUT_X_MSB
   i2c_start();
   i2c_wr(1|(MAG3110_ADDR<<1));
   mag_reading[0] = i2c_rd(false)<<8;
@@ -207,11 +208,24 @@ void mag_read() {
   i2c_stop();
 }
 
+// Get temperature
+int8_t mag_read_temp() {
+  i2c_start();
+  i2c_wr(MAG3110_ADDR<<1);
+  i2c_wr(15); // DIE_TEMP
+  i2c_start();
+  i2c_wr(1|(MAG3110_ADDR<<1));
+  int8_t temp = i2c_rd(true);
+  i2c_stop();
+  return temp;
+}
+
 // Turn magnetometer off
 void mag_off() {
   nrf_gpio_cfg_input(MAG_SDA, NRF_GPIO_PIN_NOPULL);
   nrf_gpio_cfg_input(MAG_SCL, NRF_GPIO_PIN_NOPULL);
-  nrf_gpio_cfg_input(MAG_PWR, NRF_GPIO_PIN_NOPULL);
+  nrf_gpio_pin_clear(MAG_PWR);
+  nrf_gpio_cfg_output(MAG_PWR);
 }
 
 JsVar *mag_to_xyz(int16_t d[3]) {
@@ -265,6 +279,34 @@ JsVar *jswrap_puck_mag() {
     mag_off();
   }
   return mag_to_xyz(mag_reading);
+}
+
+/*JSON{
+  "type" : "staticmethod",
+  "class" : "Puck",
+  "name" : "magTemp",
+  "generate" : "jswrap_puck_magTemp",
+  "return" : ["int", "Temperature in degrees C" ]
+}
+Turn on the magnetometer, take a single temperature reading from the MAG3110 chip, and then turn it off again.
+
+(If the magnetometer is already on, this just returns the last reading obtained)
+
+`E.getTemperature()` uses the microcontroller's temperature sensor, but this uses the magnetometer's.
+
+The reading obtained is an integer (so no decimal places), but the sensitivity is factory trimmed. to 1&deg;C, however the temperature
+offset isn't - so absolute readings may still need calibrating.
+*/
+JsVarInt jswrap_puck_magTemp() {
+  JsVarInt t;
+  if (!mag_enabled) {
+    mag_on(80000);
+    mag_wait();
+    t = mag_read_temp();
+    mag_off();
+  } else
+    t = mag_read_temp();
+  return t;
 }
 
 /*JSON{
@@ -322,8 +364,9 @@ Puck functions continue uninterrupted.
 */
 void jswrap_puck_magOn(JsVarFloat hz) {
   if (mag_enabled) {
-    jsExceptionHere(JSET_ERROR, "Magnetometer is already on");
-    return;
+    jswrap_puck_magOff();
+    // wait 1ms for power-off
+    jshDelayMicroseconds(1000);
   }
   int milliHz = (int)((hz*1000)+0.5);
   if (milliHz==0) milliHz=630;
@@ -400,7 +443,7 @@ void jswrap_puck_IR(JsVar *data, Pin cathode, Pin anode) {
   jshPinSetValue(anode, pulsePolarity);
 
   JsvIterator it;
-  jsvIteratorNew(&it, data);
+  jsvIteratorNew(&it, data, JSIF_EVERY_ARRAY_ELEMENT);
   while (jsvIteratorHasElement(&it)) {
     JsVarFloat pulseTime = jsvIteratorGetFloatValue(&it);
     if (hasPulses) jstPinOutputAtTime(time, &anode, 1, pulsePolarity);
@@ -480,7 +523,7 @@ JsVarFloat jswrap_puck_light() {
       delay = 50000;
     jshDelayMicroseconds(delay);
   }
-  JsVarFloat v = jswrap_nrf_bluetooth_getBattery();
+  JsVarFloat v = jswrap_ble_getBattery();
   JsVarFloat f = jshPinAnalog(LED1_PININDEX)*v/(3*0.45);
   if (f>1) f=1;
   // turn the red LED back on if it was on before
@@ -494,21 +537,14 @@ JsVarFloat jswrap_puck_light() {
     "type" : "staticmethod",
     "class" : "Puck",
     "name" : "getBatteryPercentage",
-    "generate" : "jswrap_puck_getBatteryPercentage",
+    "generate" : "jswrap_espruino_getBattery",
     "return" : ["int", "A percentage between 0 and 100" ]
 }
+DEPRECATED - Please use `E.getBattery()` instead.
+
 Return an approximate battery percentage remaining based on
-a normal CR2032 battery (2.8 - 2.2v)
+a normal CR2032 battery (2.8 - 2.2v).
 */
-int jswrap_puck_getBatteryPercentage() {
-  JsVarFloat v = jswrap_nrf_bluetooth_getBattery();
-  int pc = (v-2.2)*100/0.6;
-  if (pc>100) pc=100;
-  if (pc<0) pc=0;
-  return pc;
-}
-
-
 
 
 static bool selftest_check_pin(Pin pin) {
@@ -701,6 +737,10 @@ void jswrap_puck_init() {
       nrf_delay_ms(500);
     }
     jshPinInput(indicator);
+    // If the button is *still* pressed, remove all code from flash memory too!
+    if (jshPinGetValue(BTN1_PININDEX) == BTN1_ONSTATE) {
+      jsfRemoveCodeFromFlash();
+    }
   }
 }
 
@@ -720,8 +760,9 @@ void jswrap_puck_kill() {
   "generate" : "jswrap_puck_idle"
 }*/
 bool jswrap_puck_idle() {
+  /* jshPinWatch should mean that we wake up whenever a new
+   * magnetometer reading is ready */
   if (mag_enabled && nrf_gpio_pin_read(MAG_INT)) {
-    int16_t d[3];
     mag_read();
     JsVar *xyz = mag_to_xyz(mag_reading);
     JsVar *puck = jsvObjectGetChild(execInfo.root, "Puck", 0);
