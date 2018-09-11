@@ -1,0 +1,10 @@
+Build and install devel/arm-none-eabi-binutils
+
+In /usr/ports/devel/arm-none-eabi-gcc/Makefile, add the line:
+CONFIGURE_ARGS+=        --with-sysroot=/usr/local/arm-none-eabi --enable-multilib --with-float=hard --with-fpu=fpv4-sp-d16 --with-cpu=cortex-m4 --with-mode=thumb --with-endian=little,big
+
+After the line:
+.include "${MASTERDIR}/Makefile"
+
+Then build and install devel/arm-none-eabi-gcc
+Then build and install devel/arm-none-eabi-newlib
